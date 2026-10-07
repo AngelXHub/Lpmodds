@@ -12,7 +12,6 @@ local CoreGui          = game:GetService("CoreGui")
 local LP     = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
--- ================= JANELA FLUENT =================
 local Window = Fluent:CreateWindow({
     Title = "LpMods",
     SubTitle = "by LpMods",
@@ -30,15 +29,12 @@ local Tabs = {
     Discord  = Window:AddTab({ Title = "Discord",  Icon = "disc" }),
 }
 
--- ================= SETTINGS =================
 local Settings = {
-    -- Aimbot
     Aimbot      = false,
     IgnoreDead  = false,
     FOVSize     = 100,
     ShowFOV     = false,
 
-    -- Silent Aim
     SilentAim         = false,
     SilentAimFOV      = 120,
     SilentAimBodyPart = "Head",
@@ -46,23 +42,19 @@ local Settings = {
     SilentAimWall     = false,
     SilentAimMaxDist  = 500,
 
-    -- ESP
     ESP_Master = false,
     ESP_Player = false,
     ESP_Boxes  = false,
     ESP_Lines  = false,
     ESP_Names  = false,
 
-    -- Hitbox
     HitboxEnabled = false,
     HitboxSize    = 10,
     HitboxPart    = "Todos",
     Fullbody      = false,
 
-    -- Combat
     Spinbot = false,
 
-    -- Movement
     EnableSpeed  = false,
     Speed        = 16,
     JumpEnabled  = false,
@@ -73,7 +65,6 @@ local Settings = {
 
 local ACCENT = Color3.fromRGB(150, 90, 240)
 
--- ================= TEAM CHECK =================
 local function isAlly(p)
     if not p or not p.Team then return false end
     return p.Team == LP.Team
@@ -84,7 +75,6 @@ local function shouldIgnore(p)
     return false
 end
 
--- ================= FOV CIRCLE (Drawing) =================
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Color = ACCENT
 FOVCircle.Thickness = 1.5
@@ -92,7 +82,6 @@ FOVCircle.Filled = false
 FOVCircle.Transparency = 0.8
 FOVCircle.Visible = false
 
--- ================= BOTÃO FLUTUANTE =================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "LpModsFloatGui"
 ScreenGui.ResetOnSpawn = false
@@ -125,7 +114,6 @@ FloatButton.MouseButton1Click:Connect(function()
     if Window then Window:Minimize() end
 end)
 
--- ================= AIMBOT (snap na cabeça) =================
 local function GetClosestPlayer()
     local Target, MaxDistance = nil, Settings.FOVSize
     local Center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
@@ -179,7 +167,6 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ================= SILENT AIM =================
 local silentTarget = nil
 
 local function getPart(p, name)
@@ -231,7 +218,6 @@ _G.LpMods.SilentAim = {
     getAimPosition = function() return silentTarget and silentTarget.Part.Position or nil end,
 }
 
--- ================= ESP (Drawing) =================
 local ESPDrawings = {}
 
 local function CreateESP(player)
@@ -329,7 +315,6 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ================= HITBOX =================
 local hitboxOriginals = {}
 
 local function isEnemy(p)
@@ -396,7 +381,6 @@ local function disableFullbody()
     fullbodyData = {}
 end
 
--- ================= SPINBOT =================
 RunService.RenderStepped:Connect(function()
     if not Settings.Spinbot then return end
     local c = LP.Character
@@ -406,7 +390,6 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ================= SPEED / JUMP =================
 local function applySpeed()
     local c = LP.Character
     if not c then return end
@@ -430,7 +413,6 @@ RunService.Heartbeat:Connect(function()
     if h then h.JumpPower = 50 * Settings.JumpValue; h.UseJumpPower = true end
 end)
 
--- ================= FLY =================
 local flyBV, flyBG
 local function enableFly()
     local c = LP.Character
@@ -458,7 +440,6 @@ UserInputService.InputBegan:Connect(function(input, gp)
     end
 end)
 
--- ================= 3ª PESSOA =================
 local thirdPersonConn
 local function enableThirdPerson()
     if thirdPersonConn then thirdPersonConn:Disconnect() end
@@ -478,7 +459,6 @@ local function disableThirdPerson()
     Camera.CameraSubject = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
 end
 
--- ================= UI — COMBAT =================
 Tabs.Combat:AddToggle("Aimbot", {
     Title = "Aimbot Gruda na Cabeça",
     Default = false,
@@ -529,7 +509,6 @@ Tabs.Combat:AddToggle("SilentWall", {
     Callback = function(v) Settings.SilentAimWall = v end
 })
 
--- ================= UI — VISUALS =================
 Tabs.Visuals:AddToggle("ESPMaster", {
     Title = "Ativar ESP (Master)",
     Default = false,
@@ -556,7 +535,6 @@ Tabs.Visuals:AddToggle("ESPNames", {
     Callback = function(v) Settings.ESP_Names = v end
 })
 
--- ================= UI — HITBOX =================
 Tabs.Hitbox:AddToggle("Hitbox", {
     Title = "Hitbox Expand",
     Default = false,
@@ -586,7 +564,6 @@ Tabs.Hitbox:AddToggle("Fullbody", {
     end
 })
 
--- ================= UI — MOVEMENT =================
 Tabs.Movement:AddToggle("Spinbot", {
     Title = "Spinbot",
     Default = false,
@@ -616,33 +593,4 @@ Tabs.Movement:AddToggle("Fly", {
     Title = "Fly",
     Default = false,
     Callback = function(v)
-        Settings.FlyEnabled = v
-        if v then enableFly() else disableFly() end
-    end
-})
-Tabs.Movement:AddToggle("ThirdPerson", {
-    Title = "3ª Pessoa",
-    Default = false,
-    Callback = function(v)
-        Settings.ThirdPerson = v
-        if v then enableThirdPerson() else disableThirdPerson() end
-    end
-})
-
--- ================= UI — DISCORD =================
-Tabs.Discord:AddButton({
-    Title = "Copiar Link do Discord",
-    Description = "https://discord.gg/zSQPNz8",
-    Callback = function()
-        if setclipboard then setclipboard("https://discord.gg/zSQPNz8") end
-        Fluent:Notify({
-            Title = "LpMods",
-            Content = "Link do Discord copiado!",
-            Duration = 4
-        })
-    end
-})
-
-Window:SelectTab(1)
-
-print("[LpMods] Fluent carregado com sucesso.")
+    
