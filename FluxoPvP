@@ -25,22 +25,132 @@ local Services = {
 local LocalPlayer = Services.Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
-local Settings = {
-    Aimbot = false,
-    IgnoreDead = false,
-    FOVSize = 100,
-    ShowFOV = false,
+-- ============ HIDE EXECUTOR + SCRIPT (Delta / Arceus compatible) ============
+local HideSelf = {}
 
-    ESP_Master = false,
-    ESP_Boxes = false,
-    ESP_Lines = false,
-    ESP_Names = false,
-    ESP_Player = false,
+local function safeCall(fn, ...)
+    local ok, res = pcall(fn, ...)
+    if ok then return res end
+    return nil
+end
 
-    Spinbot = false,
-    EnableSpeed = false,
-    Speed = 16
-}
+function HideSelf.SpoofIdentity()
+    if type(getscriptclosure) == "function" then
+        local ok = pcall(function()
+            local old = getscriptclosure(script)
+            if old then
+                if type(setscriptclosure) == "function" then
+                    setscriptclosure(script, function() return nil end)
+                end
+            end
+        end)
+    end
+
+    if type(setreadonly) == "function" and type(getrawmetatable) == "function" then
+        local mt = getrawmetatable(game)
+        local oldIndex = mt.__index
+        safeCall(setreadonly, mt, false)
+        mt.__index = newcclosure(function(self, key)
+            if self == script and (key == "Name" or key == "ClassName") then
+                return key == "Name" and "CoreClient" or "LocalScript"
+            end
+            return oldIndex(self, key)
+        end)
+        safeCall(setreadonly, mt, true)
+    end
+end
+
+function HideSelf.KillExecutorWindow()
+    if type(gethui) == "function" then
+        local hui = gethui()
+        if hui and hui.Parent ~= game.CoreGui then
+            safeCall(function() hui.Parent = game.CoreGui end)
+        end
+    end
+
+    -- Nuke anything that looks like an executor console / debug window
+    local suspiciousNames = {
+        "Delta", "DeltaGui", "DeltaUI",
+        "Arceus", "ArceusGui", "ArceusUI",
+        "Executor", "Console", "ScriptEditor", "ScriptHub", "Debug"
+    }
+
+    safeCall(function()
+        for _, gui in pairs(game.CoreGui:GetChildren()) do
+            if gui:IsA("ScreenGui") then
+                for _, name in pairs(suspiciousNames) do
+                    if gui.Name:lower():find(name:lower()) and gui.Name ~= "LpModsFloatingButtonGui"
+                        and gui.Name ~= "LpModsTopBanner" then
+                        safeCall(function() gui.Enabled = false end)
+                        safeCall(function() gui.Parent = nil end)
+                    end
+                end
+            end
+        end
+    end)
+
+    safeCall(function()
+        for _, gui in pairs(game.Players.LocalPlayer.PlayerGui:GetChildren()) do
+            if gui:IsA("ScreenGui") then
+                for _, name in pairs(suspiciousNames) do
+                    if gui.Name:lower():find(name:lower()) then
+                        safeCall(function() gui.Enabled = false end)
+                    end
+                end
+            end
+        end
+    end)
+end
+
+function HideSelf.ScrubScript()
+    -- Detach from every weak registry we can touch
+    if type(getgc) == "function" then
+        safeCall(function()
+            for _, obj in pairs(getgc(true)) do
+                if type(obj) == "table" and rawget(obj, "__namecall") then
+                    if rawget(obj, "__namecall") ~= nil then
+                        -- leave our own hook alone
+                    end
+                end
+            end
+        end)
+    end
+
+    if type(getreg) == "function" then
+        safeCall(function()
+            local reg = getreg()
+            if type(reg) == "table" then
+                for k, v in pairs(reg) do
+                    if type(v) == "userdata" and tostring(v):find("LpMods") then
+                        reg[k] = nil
+                    end
+                end
+            end
+        end)
+    end
+
+    if type(clear_script_cache) == "function" then safeCall(clear_script_cache) end
+    if type(clear_http_cache) == "function" then safeCall(clear_http_cache) end
+
+    if type(hookfunction) == "function" then
+        safeCall(hookfunction, error, function() return nil end)
+    end
+end
+
+function HideSelf.ApplyAll()
+    HideSelf.SpoofIdentity()
+    HideSelf.KillExecutorWindow()
+    HideSelf.ScrubScript()
+    pcall(function()
+        if Window and Window.Notify then
+            Window:Notify({ Title = "LpMods", Content = "stealth applied.", Duration = 3 })
+        end
+    end)
+end
+-- ==========================================================================
+
+-- auto-run stealth on load
+pcall(HideSelf.ApplyAll)
 
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Color = Color3.fromRGB(255, 255, 255)
@@ -61,6 +171,62 @@ elseif gethui then
 else
     ScreenGui.Parent = game.CoreGui
 end
+
+-- ============ TOP BANNER LINK ============
+local BannerGui = Instance.new("ScreenGui")
+BannerGui.Name = "LpModsTopBanner"
+BannerGui.ResetOnSpawn = false
+BannerGui.IgnoreGuiInset = true
+BannerGui.DisplayOrder = 999999
+
+if syn and syn.protect_gui then
+    syn.protect_gui(BannerGui)
+    BannerGui.Parent = game.CoreGui
+elseif gethui then
+    BannerGui.Parent = gethui()
+else
+    BannerGui.Parent = game.CoreGui
+end
+
+local Banner = Instance.new("TextButton")
+Banner.Name = "DiscordBanner"
+Banner.Parent = BannerGui
+Banner.Size = UDim2.new(1, 0, 0, 30)
+Banner.Position = UDim2.new(0, 0, 0, 0)
+Banner.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+Banner.BackgroundTransparency = 0.15
+Banner.BorderSizePixel = 0
+Banner.Text = "discord.gg/Pga8XBq   •   click to copy"
+Banner.Font = Enum.Font.GothamBold
+Banner.TextSize = 14
+Banner.TextColor3 = Color3.fromRGB(255, 255, 255)
+Banner.AutoButtonColor = true
+Banner.Active = true
+
+local BannerStroke = Instance.new("UIStroke")
+BannerStroke.Color = Color3.fromRGB(88, 101, 242)
+BannerStroke.Thickness = 1
+BannerStroke.Transparency = 0.2
+BannerStroke.Parent = Banner
+
+Banner.MouseButton1Click:Connect(function()
+    setclipboard("https://discord.gg/Pga8XBq")
+    Banner.Text = "copied!  •  discord.gg/Pga8XBq"
+    task.delay(2, function()
+        Banner.Text = "discord.gg/Pga8XBq   •   click to copy"
+    end)
+end)
+
+local function ApplyBannerScale()
+    local vp = Camera and Camera.ViewportSize or Vector2.new(1920, 1080)
+    Banner.TextSize = math.clamp(math.floor(vp.X / 100), 12, 20)
+end
+ApplyBannerScale()
+
+if Camera then
+    Camera:GetPropertyChangedSignal("ViewportSize"):Connect(ApplyBannerScale)
+end
+-- =========================================
 
 local FloatButton = Instance.new("TextButton")
 FloatButton.Name = "LpModsFloatBtn"
@@ -93,14 +259,35 @@ local function ApplySpeed()
     if char then
         local humanoid = char:FindFirstChildOfClass("Humanoid")
         if humanoid then
-            if Settings.EnableSpeed then
-                humanoid.WalkSpeed = Settings.Speed
+            if Settings_EnableSpeed then
+                humanoid.WalkSpeed = Settings_Speed
             else
                 humanoid.WalkSpeed = 16
             end
         end
     end
 end
+
+local Settings = {
+    Aimbot = false,
+    Silent = false,
+    IgnoreDead = false,
+    FOVSize = 100,
+    ShowFOV = false,
+
+    ESP_Master = false,
+    ESP_Boxes = false,
+    ESP_Lines = false,
+    ESP_Names = false,
+    ESP_Player = false,
+
+    Spinbot = false,
+    EnableSpeed = false,
+    Speed = 16
+}
+
+Settings_EnableSpeed = Settings.EnableSpeed
+Settings_Speed = Settings.Speed
 
 Services.RunService.Stepped:Connect(function()
     if Settings.EnableSpeed then
@@ -151,6 +338,37 @@ local function GetClosestPlayer()
     end
     return Target
 end
+
+-- ============ SILENT AIM HOOK (Delta + Arceus compatible) ============
+local mt = getrawmetatable(game)
+local oldNamecall = mt.__namecall
+setreadonly(mt, false)
+mt.__namecall = newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    if Settings.Silent and Settings.Aimbot and (method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRayWithWhitelist" or method == "Raycast") then
+        local target = GetClosestPlayer()
+        if target and target.Character then
+            local head = target.Character:FindFirstChild("Head")
+            local humanoid = target.Character:FindFirstChildOfClass("Humanoid")
+            if head and humanoid and humanoid.Health > 0 then
+                local args = {...}
+                if method == "Raycast" then
+                    args[2] = head
+                else
+                    local ray = args[1]
+                    if typeof(ray) == "Ray" then
+                        local dir = (head.Position - ray.Origin).Unit * (ray.Direction.Magnitude > 0 and ray.Direction.Magnitude or 1000)
+                        args[1] = Ray.new(ray.Origin, dir)
+                    end
+                end
+                return oldNamecall(self, table.unpack(args))
+            end
+        end
+    end
+    return oldNamecall(self, ...)
+end)
+setreadonly(mt, true)
+-- =====================================================================
 
 local CyanColor = Color3.fromRGB(255, 255, 255)
 local ESPDrawings = {}
@@ -207,7 +425,9 @@ Services.RunService.RenderStepped:Connect(function()
             local humanoid = target.Character:FindFirstChildOfClass("Humanoid")
 
             if head and humanoid and humanoid.Health > 0 then
-                Camera.CFrame = CFrame.new(Camera.CFrame.Position, head.Position)
+                if not Settings.Silent then
+                    Camera.CFrame = CFrame.new(Camera.CFrame.Position, head.Position)
+                end
             end
         end
     end
@@ -296,6 +516,7 @@ Services.RunService.RenderStepped:Connect(function()
 end)
 
 Tabs.Combat:AddToggle("Aimbot", { Title = "Aimbot Gruda na Cabeça", Default = false, Callback = function(v) Settings.Aimbot = v end })
+Tabs.Combat:AddToggle("Silent", { Title = "Silent Aim", Default = false, Callback = function(v) Settings.Silent = v end })
 Tabs.Combat:AddToggle("IgnoreDead", { Title = "Ignorar Mortos no Chão", Default = false, Callback = function(v) Settings.IgnoreDead = v end })
 Tabs.Combat:AddToggle("ShowFOV", { Title = "Mostrar FOV", Default = false, Callback = function(v) Settings.ShowFOV = v end })
 
@@ -318,6 +539,7 @@ Tabs.Visuals:AddToggle("ESPNames", { Title = "ESP Name", Default = false, Callba
 
 Tabs.Movement:AddToggle("EnableSpeed", { Title = "Ativar Velocidade", Default = false, Callback = function(v)
     Settings.EnableSpeed = v
+    Settings_EnableSpeed = v
     ApplySpeed()
 end })
 
@@ -329,11 +551,20 @@ Tabs.Movement:AddSlider("Speed", {
     Rounding = 0,
     Callback = function(v)
         Settings.Speed = v
+        Settings_Speed = v
         ApplySpeed()
     end
 })
 
 Tabs.Movement:AddToggle("Spinbot", { Title = "Spinbot", Default = false, Callback = function(v) Settings.Spinbot = v end })
+
+Tabs.Discord:AddButton({
+    Title = "Aplicar Stealth (hide executor)",
+    Description = "Delta / Arceus compatible",
+    Callback = function()
+        HideSelf.ApplyAll()
+    end
+})
 
 task.spawn(function()
     task.wait(1)
