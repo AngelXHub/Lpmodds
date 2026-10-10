@@ -10,10 +10,11 @@ local Window = Fluent:CreateWindow({
 })
 
 local Tabs = {
-    Combat = Window:AddTab({ Title = "Combate", Icon = "crosshair" }),
+    Combat  = Window:AddTab({ Title = "Combate", Icon = "crosshair" }),
     Visuals = Window:AddTab({ Title = "Visuals (ESP)", Icon = "eye" }),
-    Movement = Window:AddTab({ Title = "Movimento", Icon = "gauge" }),
-    Misc = Window:AddTab({ Title = "Misc", Icon = "settings" }),
+    Hitbox  = Window:AddTab({ Title = "Hitbox", Icon = "box" }),
+    Movement= Window:AddTab({ Title = "Movimento", Icon = "gauge" }),
+    Misc    = Window:AddTab({ Title = "Misc", Icon = "settings" }),
     Discord = Window:AddTab({ Title = "Discord", Icon = "disc" })
 }
 
@@ -28,6 +29,7 @@ local Camera = workspace.CurrentCamera
 
 local Settings = {
     Aimbot = false,
+    Silent = false,
     IgnoreDead = false,
     FOVSize = 100,
     ShowFOV = false,
@@ -40,7 +42,6 @@ local Settings = {
     ESP_Lines = false,
     ESP_Names = false,
     ESP_Player = false,
-
     ESP_Ally = false,
     AllyColor = Color3.fromRGB(80, 180, 255),
 
@@ -56,26 +57,139 @@ local Settings = {
 local CyanColor = Color3.fromRGB(255, 255, 255)
 local OriginalHitbox = {}
 
-local function IsAlly(player)
-    if not player or not player.Team then return false end
-    return player.Team == LocalPlayer.Team
+local executorEscondido = false
+local guisEscondidos = {}
+
+local function definirVisibilidadeExecutor(visivel)
+    local executorGui = gethui and gethui() or game.CoreGui
+    if not executorGui then return end
+
+    if visivel then
+        for _, gui in pairs(guisEscondidos) do
+            pcall(function() gui.Enabled = true end)
+        end
+        guisEscondidos = {}
+    else
+        guisEscondidos = {}
+        for _, item in pairs(executorGui:GetChildren()) do
+            if item:IsA("ScreenGui") then
+                if item.Enabled then
+                    item.Enabled = false
+                    table.insert(guisEscondidos, item)
+                end
+            end
+        end
+        for _, item in pairs(game.CoreGui:GetChildren()) do
+            if item:IsA("ScreenGui")
+                and item.Name ~= "LpModsFloatingButtonGui"
+                and item.Name ~= "LpModsTopBanner"
+                and not item.Name:find("Fluent") then
+                if item.Enabled then
+                    item.Enabled = false
+                    table.insert(guisEscondidos, item)
+                end
+            end
+        end
+    end
 end
 
-local function HasLineOfSight(targetPart)
-    if not targetPart then return false end
-    local myChar = LocalPlayer.Character
-    local origin = Camera.CFrame.Position
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = { myChar, targetPart.Parent }
-    local result = workspace:Raycast(origin, targetPart.Position - origin, params)
-    return result == nil
+local function AlternarExecutor()
+    executorEscondido = not executorEscondido
+    definirVisibilidadeExecutor(not executorEscondido)
+    pcall(function()
+        Fluent:Notify({
+            Title = "Executor",
+            Content = executorEscondido and "Executor escondido." or "Executor visível.",
+            Duration = 3
+        })
+    end)
+end
+
+LocalPlayer.Chatted:Connect(function(msg)
+    local cmd = msg:lower():gsub("^%s*(.-)%s*$", "%1")
+    if cmd == ".hub" then
+        definirVisibilidadeExecutor(true)
+        executorEscondido = false
+    elseif cmd == ".hide" then
+        definirVisibilidadeExecutor(false)
+        executorEscondido = true
+    end
+end)
+
+pcall(function()
+    local TextChatService = game:GetService("TextChatService")
+    if TextChatService then
+        TextChatService.MessageReceived:Connect(function(message)
+            local sender = message.TextSource and message.TextSource.UserId
+            if sender == LocalPlayer.UserId then
+                local t = message.Text:lower()
+                if t:find(".hub") then
+                    definirVisibilidadeExecutor(true)
+                    executorEscondido = false
+                elseif t:find(".hide") then
+                    definirVisibilidadeExecutor(false)
+                    executorEscondido = true
+                end
+            end
+        end)
+    end
+end)
+
+local BannerGui = Instance.new("ScreenGui")
+BannerGui.Name = "LpModsTopBanner"
+BannerGui.ResetOnSpawn = false
+BannerGui.IgnoreGuiInset = true
+BannerGui.DisplayOrder = 999999
+
+if syn and syn.protect_gui then
+    syn.protect_gui(BannerGui); BannerGui.Parent = game.CoreGui
+elseif gethui then
+    BannerGui.Parent = gethui()
+else
+    BannerGui.Parent = game.CoreGui
+end
+
+local Banner = Instance.new("TextButton")
+Banner.Name = "BannerDiscord"
+Banner.Parent = BannerGui
+Banner.Size = UDim2.new(1, 0, 0, 30)
+Banner.Position = UDim2.new(0, 0, 0, 0)
+Banner.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+Banner.BackgroundTransparency = 0.15
+Banner.BorderSizePixel = 0
+Banner.Text = "discord.gg/Pga8XBq   •   clique para copiar"
+Banner.Font = Enum.Font.GothamBold
+Banner.TextSize = 14
+Banner.TextColor3 = Color3.fromRGB(255, 255, 255)
+Banner.AutoButtonColor = true
+Banner.Active = true
+
+local BannerStroke = Instance.new("UIStroke")
+BannerStroke.Color = Color3.fromRGB(88, 101, 242)
+BannerStroke.Thickness = 1
+BannerStroke.Transparency = 0.2
+BannerStroke.Parent = Banner
+
+Banner.MouseButton1Click:Connect(function()
+    setclipboard("https://discord.gg/Pga8XBq")
+    Banner.Text = "copiado!  •  discord.gg/Pga8XBq"
+    task.delay(2, function()
+        Banner.Text = "discord.gg/Pga8XBq   •   clique para copiar"
+    end)
+end)
+
+local function AjustarEscalaBanner()
+    local vp = Camera and Camera.ViewportSize or Vector2.new(1920, 1080)
+    Banner.TextSize = math.clamp(math.floor(vp.X / 100), 12, 20)
+end
+AjustarEscalaBanner()
+if Camera then
+    Camera:GetPropertyChangedSignal("ViewportSize"):Connect(AjustarEscalaBanner)
 end
 
 local function ApplyHitbox(player)
     local char = player.Character
     if not char then return end
-
     local hrp = char:FindFirstChild("HumanoidRootPart")
     local head = char:FindFirstChild("Head")
     if not hrp then return end
@@ -93,20 +207,12 @@ local function ApplyHitbox(player)
     local orig = OriginalHitbox[player]
     local mult = Settings.HitboxSize
 
-    hrp.Size = Vector3.new(
-        orig.hrpSize.X * mult,
-        orig.hrpSize.Y * mult,
-        orig.hrpSize.Z * mult
-    )
+    hrp.Size = Vector3.new(orig.hrpSize.X * mult, orig.hrpSize.Y * mult, orig.hrpSize.Z * mult)
     hrp.Transparency = Settings.HitboxVisible and 0.5 or 1
     hrp.CanCollide = false
 
     if head and orig.headSize then
-        head.Size = Vector3.new(
-            orig.headSize.X * mult,
-            orig.headSize.Y * mult,
-            orig.headSize.Z * mult
-        )
+        head.Size = Vector3.new(orig.headSize.X * mult, orig.headSize.Y * mult, orig.headSize.Z * mult)
         head.Transparency = Settings.HitboxVisible and 0.5 or 1
         head.CanCollide = false
     end
@@ -156,116 +262,6 @@ Services.Players.PlayerRemoving:Connect(function(player)
     OriginalHitbox[player] = nil
 end)
 
-local bypassActive = false
-local hiddenGuis = {}
-
-local executorNames = {
-    "Arceus", "ArceusX", "Delta", "DeltaX", "Codex", "Krnl", "Fluxus",
-    "Hydrogen", "Solara", "Wave", "Vega", "Cryptic", "Trigon", "Synapse",
-    "ScriptBlox", "Xeno", "Nihon", "Rekon", "Swift", "Bunni", "Aimmy"
-}
-
-local FloatButton
-
-local function HideAll()
-    hiddenGuis = {}
-    for _, gui in pairs(game.CoreGui:GetChildren()) do
-        for _, name in ipairs(executorNames) do
-            if gui.Name:lower():find(name:lower()) then
-                if gui.Enabled then
-                    gui.Enabled = false
-                    table.insert(hiddenGuis, gui)
-                end
-            end
-        end
-    end
-
-    if FloatButton then FloatButton.Visible = false end
-
-    for _, gui in pairs(game.CoreGui:GetChildren()) do
-        if gui.Name == "LpModsFloatingButtonGui" then
-            gui.Name = "Svc_" .. tostring(math.random(100000, 999999))
-        end
-    end
-end
-
-local function ShowAll()
-    for _, gui in pairs(hiddenGuis) do
-        pcall(function() gui.Enabled = true end)
-    end
-    hiddenGuis = {}
-
-    if FloatButton then FloatButton.Visible = true end
-
-    for _, gui in pairs(game.CoreGui:GetChildren()) do
-        if gui.Name:find("Svc_") then
-            gui.Name = "LpModsFloatingButtonGui"
-        end
-    end
-end
-
-local function RunBypass()
-    bypassActive = true
-    HideAll()
-
-    print("bypass by: 77")
-
-    Fluent:Notify({
-        Title = "Bypass Ativado",
-        Content = "Executor e script escondidos. Digite .byps no chat pra alternar.",
-        Duration = 6
-    })
-end
-
-local function ToggleBypass()
-    if not bypassActive then
-        RunBypass()
-    else
-        if #hiddenGuis > 0 or (FloatButton and FloatButton.Visible == false) then
-            ShowAll()
-            print("bypass by: 77 — desativado")
-            Fluent:Notify({
-                Title = "Bypass",
-                Content = "Executor e script visíveis novamente.",
-                Duration = 4
-            })
-        else
-            HideAll()
-            print("bypass by: 77")
-            Fluent:Notify({
-                Title = "Bypass",
-                Content = "Executor e script escondidos.",
-                Duration = 4
-            })
-        end
-    end
-end
-
-local function hookChat()
-    LocalPlayer.Chatted:Connect(function(msg)
-        if msg:lower():find("byps") then
-            ToggleBypass()
-        end
-    end)
-
-    local ok, TextChatService = pcall(function()
-        return game:GetService("TextChatService")
-    end)
-    if ok and TextChatService then
-        TextChatService.MessageReceived:Connect(function(message)
-            local sender = message.TextSource and message.TextSource.UserId
-            if sender == LocalPlayer.UserId then
-                local text = message.Text:lower()
-                if text:find("byps") then
-                    ToggleBypass()
-                end
-            end
-        end)
-    end
-end
-
-hookChat()
-
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Color = Color3.fromRGB(255, 255, 255)
 FOVCircle.Thickness = 1.5
@@ -278,15 +274,14 @@ ScreenGui.Name = "LpModsFloatingButtonGui"
 ScreenGui.ResetOnSpawn = false
 
 if syn and syn.protect_gui then
-    syn.protect_gui(ScreenGui)
-    ScreenGui.Parent = game.CoreGui
+    syn.protect_gui(ScreenGui); ScreenGui.Parent = game.CoreGui
 elseif gethui then
     ScreenGui.Parent = gethui()
 else
     ScreenGui.Parent = game.CoreGui
 end
 
-FloatButton = Instance.new("TextButton")
+local FloatButton = Instance.new("TextButton")
 FloatButton.Name = "LpModsFloatBtn"
 FloatButton.Parent = ScreenGui
 FloatButton.Size = UDim2.new(0, 55, 0, 55)
@@ -307,21 +302,31 @@ UICorner.CornerRadius = UDim.new(0, 10)
 UICorner.Parent = FloatButton
 
 FloatButton.MouseButton1Click:Connect(function()
-    if Window then
-        Window:Minimize()
-    end
+    if Window then Window:Minimize() end
 end)
+
+local function IsAlly(player)
+    if not player or not player.Team then return false end
+    return player.Team == LocalPlayer.Team
+end
+
+local function HasLineOfSight(targetPart)
+    if not targetPart then return false end
+    local myChar = LocalPlayer.Character
+    local origin = Camera.CFrame.Position
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = { myChar, targetPart.Parent }
+    local result = workspace:Raycast(origin, targetPart.Position - origin, params)
+    return result == nil
+end
 
 local function ApplySpeed()
     local char = LocalPlayer.Character
     if char then
         local humanoid = char:FindFirstChildOfClass("Humanoid")
         if humanoid then
-            if Settings.EnableSpeed then
-                humanoid.WalkSpeed = Settings.Speed
-            else
-                humanoid.WalkSpeed = 16
-            end
+            humanoid.WalkSpeed = Settings.EnableSpeed and Settings.Speed or 16
         end
     end
 end
@@ -351,10 +356,7 @@ local function GetClosestPlayer()
             local rootPart = char:FindFirstChild("HumanoidRootPart")
 
             if head and humanoid and rootPart then
-                if Settings.TeamCheck and IsAlly(player) then
-                    continue
-                end
-
+                if Settings.TeamCheck and IsAlly(player) then continue end
                 if Settings.IgnoreDead then
                     if humanoid.Health <= 0 or humanoid:GetState() == Enum.HumanoidStateType.Dead or not char:IsDescendantOf(workspace) then
                         continue
@@ -364,10 +366,7 @@ local function GetClosestPlayer()
                         continue
                     end
                 end
-
-                if Settings.WallCheck and not HasLineOfSight(head) then
-                    continue
-                end
+                if Settings.WallCheck and not HasLineOfSight(head) then continue end
 
                 local headPos, onScreen = Camera:WorldToViewportPoint(head.Position)
                 if onScreen then
@@ -383,40 +382,61 @@ local function GetClosestPlayer()
     return Target
 end
 
+local mt = getrawmetatable(game)
+local oldNamecall = mt.__namecall
+setreadonly(mt, false)
+mt.__namecall = newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    if Settings.Silent and Settings.Aimbot and (method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRayWithWhitelist" or method == "Raycast") then
+        local target = GetClosestPlayer()
+        if target and target.Character then
+            local head = target.Character:FindFirstChild("Head")
+            local humanoid = target.Character:FindFirstChildOfClass("Humanoid")
+            if head and humanoid and humanoid.Health > 0 then
+                local args = {...}
+                if method == "Raycast" then
+                    args[2] = head
+                else
+                    local ray = args[1]
+                    if typeof(ray) == "Ray" then
+                        local dir = (head.Position - ray.Origin).Unit * (ray.Direction.Magnitude > 0 and ray.Direction.Magnitude or 1000)
+                        args[1] = Ray.new(ray.Origin, dir)
+                    end
+                end
+                return oldNamecall(self, table.unpack(args))
+            end
+        end
+    end
+    return oldNamecall(self, ...)
+end)
+setreadonly(mt, true)
+
 local ESPDrawings = {}
 
 local function CreateESP(player)
     if ESPDrawings[player] then return end
-
     local drawings = {
         Box = Drawing.new("Square"),
         Line = Drawing.new("Line"),
         Name = Drawing.new("Text")
     }
-
     drawings.Box.Color = CyanColor
     drawings.Box.Thickness = 1.5
     drawings.Box.Filled = false
-
     drawings.Line.Color = CyanColor
     drawings.Line.Thickness = 1
-
     drawings.Name.Color = CyanColor
     drawings.Name.Size = 13
     drawings.Name.Center = true
     drawings.Name.Outline = true
-
     ESPDrawings[player] = drawings
 end
 
 local function RemoveESP(player)
     if ESPDrawings[player] then
-        for _, v in pairs(ESPDrawings[player]) do
-            v:Remove()
-        end
+        for _, v in pairs(ESPDrawings[player]) do v:Remove() end
         ESPDrawings[player] = nil
     end
-
     if player.Character and player.Character:FindFirstChild("LpModsChams") then
         player.Character.LpModsChams:Destroy()
     end
@@ -435,8 +455,7 @@ Services.RunService.RenderStepped:Connect(function()
         if target and target.Character then
             local head = target.Character:FindFirstChild("Head")
             local humanoid = target.Character:FindFirstChildOfClass("Humanoid")
-
-            if head and humanoid and humanoid.Health > 0 then
+            if head and humanoid and humanoid.Health > 0 and not Settings.Silent then
                 Camera.CFrame = CFrame.new(Camera.CFrame.Position, head.Position)
             end
         end
@@ -449,18 +468,12 @@ Services.RunService.RenderStepped:Connect(function()
     for _, player in pairs(Services.Players:GetPlayers()) do
         if player ~= LocalPlayer then
             if not ESPDrawings[player] then CreateESP(player) end
-
             local drawings = ESPDrawings[player]
             local char = player.Character
             local humanoid = char and char:FindFirstChildOfClass("Humanoid")
 
             local ally = IsAlly(player)
-            local shouldRender
-            if ally then
-                shouldRender = Settings.ESP_Ally
-            else
-                shouldRender = Settings.ESP_Master
-            end
+            local shouldRender = ally and Settings.ESP_Ally or (not ally and Settings.ESP_Master)
 
             if shouldRender and char and humanoid and humanoid.Health > 0 then
                 local cframe, size = char:GetBoundingBox()
@@ -474,7 +487,6 @@ Services.RunService.RenderStepped:Connect(function()
 
                     local topWorld = cframe.Position + Vector3.new(0, size.Y / 2, 0)
                     local bottomWorld = cframe.Position - Vector3.new(0, size.Y / 2, 0)
-
                     local topScreen = Camera:WorldToViewportPoint(topWorld)
                     local bottomScreen = Camera:WorldToViewportPoint(bottomWorld)
 
@@ -485,25 +497,19 @@ Services.RunService.RenderStepped:Connect(function()
                         drawings.Box.Size = Vector2.new(width, height)
                         drawings.Box.Position = Vector2.new(screenPos.X - width / 2, topScreen.Y)
                         drawings.Box.Visible = true
-                    else
-                        drawings.Box.Visible = false
-                    end
+                    else drawings.Box.Visible = false end
 
                     if Settings.ESP_Lines then
                         drawings.Line.From = Vector2.new(Camera.ViewportSize.X / 2, 0)
                         drawings.Line.To = Vector2.new(screenPos.X, topScreen.Y)
                         drawings.Line.Visible = true
-                    else
-                        drawings.Line.Visible = false
-                    end
+                    else drawings.Line.Visible = false end
 
                     if Settings.ESP_Names then
                         drawings.Name.Text = player.Name .. (ally and " [ALLY]" or "")
                         drawings.Name.Position = Vector2.new(screenPos.X, topScreen.Y - 16)
                         drawings.Name.Visible = true
-                    else
-                        drawings.Name.Visible = false
-                    end
+                    else drawings.Name.Visible = false end
 
                     if Settings.ESP_Player then
                         local highlight = char:FindFirstChild("LpModsChams")
@@ -520,9 +526,7 @@ Services.RunService.RenderStepped:Connect(function()
                         highlight.OutlineColor = renderColor
                         highlight.Enabled = true
                     else
-                        if char:FindFirstChild("LpModsChams") then
-                            char.LpModsChams.Enabled = false
-                        end
+                        if char:FindFirstChild("LpModsChams") then char.LpModsChams.Enabled = false end
                     end
                 else
                     drawings.Box.Visible = false
@@ -541,17 +545,14 @@ Services.RunService.RenderStepped:Connect(function()
 end)
 
 Tabs.Combat:AddToggle("Aimbot", { Title = "Aimbot Gruda na Cabeça", Default = false, Callback = function(v) Settings.Aimbot = v end })
+Tabs.Combat:AddToggle("Silent", { Title = "Silent Aim", Default = false, Callback = function(v) Settings.Silent = v end })
 Tabs.Combat:AddToggle("IgnoreDead", { Title = "Ignorar Mortos no Chão", Default = false, Callback = function(v) Settings.IgnoreDead = v end })
 Tabs.Combat:AddToggle("ShowFOV", { Title = "Mostrar FOV", Default = false, Callback = function(v) Settings.ShowFOV = v end })
 Tabs.Combat:AddToggle("TeamCheckCombat", { Title = "Team Check (não mira aliado)", Default = false, Callback = function(v) Settings.TeamCheck = v end })
-Tabs.Combat:AddToggle("WallCheckCombat", { Title = "Wall Check (não mira através de parede)", Default = false, Callback = function(v) Settings.WallCheck = v end })
+Tabs.Combat:AddToggle("WallCheckCombat", { Title = "Wall Check", Default = false, Callback = function(v) Settings.WallCheck = v end })
 
 Tabs.Combat:AddSlider("FOVSize", {
-    Title = "Tamanho do FOV",
-    Min = 30,
-    Max = 500,
-    Default = 100,
-    Rounding = 0,
+    Title = "Tamanho do FOV", Min = 30, Max = 500, Default = 100, Rounding = 0,
     Callback = function(v) Settings.FOVSize = v end
 })
 
@@ -562,7 +563,7 @@ Tabs.Visuals:AddToggle("ESPBoxes", { Title = "ESP Boxes", Default = false, Callb
 Tabs.Visuals:AddToggle("ESPLines", { Title = "ESP Lines", Default = false, Callback = function(v) Settings.ESP_Lines = v end })
 Tabs.Visuals:AddToggle("ESPNames", { Title = "ESP Name", Default = false, Callback = function(v) Settings.ESP_Names = v end })
 
-Tabs.Visuals:AddToggle("HitboxEnabled", {
+Tabs.Hitbox:AddToggle("HitboxEnabled", {
     Title = "Ativar Hitbox Expandida",
     Default = false,
     Callback = function(v)
@@ -571,19 +572,25 @@ Tabs.Visuals:AddToggle("HitboxEnabled", {
     end
 })
 
-Tabs.Visuals:AddSlider("HitboxSize", {
+Tabs.Hitbox:AddSlider("HitboxSize", {
     Title = "Tamanho da Hitbox",
-    Min = 1,
-    Max = 20,
-    Default = 5,
-    Rounding = 1,
+    Min = 1, Max = 20, Default = 5, Rounding = 1,
     Callback = function(v) Settings.HitboxSize = v end
 })
 
-Tabs.Visuals:AddToggle("HitboxVisible", {
+Tabs.Hitbox:AddToggle("HitboxVisible", {
     Title = "Mostrar Hitbox (visual)",
     Default = false,
     Callback = function(v) Settings.HitboxVisible = v end
+})
+
+Tabs.Hitbox:AddButton({
+    Title = "Restaurar Hitboxes",
+    Description = "Volta tudo pro tamanho original",
+    Callback = function()
+        RestoreAllHitboxes()
+        Fluent:Notify({ Title = "Hitbox", Content = "Hitboxes restauradas.", Duration = 3 })
+    end
 })
 
 Tabs.Movement:AddToggle("EnableSpeed", { Title = "Ativar Velocidade", Default = false, Callback = function(v)
@@ -592,37 +599,40 @@ Tabs.Movement:AddToggle("EnableSpeed", { Title = "Ativar Velocidade", Default = 
 end })
 
 Tabs.Movement:AddSlider("Speed", {
-    Title = "Aumentar Velocidade",
-    Min = 16,
-    Max = 300,
-    Default = 16,
-    Rounding = 0,
-    Callback = function(v)
-        Settings.Speed = v
-        ApplySpeed()
-    end
+    Title = "Aumentar Velocidade", Min = 16, Max = 300, Default = 16, Rounding = 0,
+    Callback = function(v) Settings.Speed = v; ApplySpeed() end
 })
 
 Tabs.Movement:AddToggle("Spinbot", { Title = "Spinbot", Default = false, Callback = function(v) Settings.Spinbot = v end })
 
-Tabs.Misc:AddButton({
-    Title = "Ativar Bypass",
-    Description = "Esconde o executor e o script",
-    Callback = function() RunBypass() end
+Tabs.Misc:AddToggle("EsconderExecutor", {
+    Title = "Esconder Executor",
+    Default = false,
+    Callback = function(v)
+        executorEscondido = v
+        definirVisibilidadeExecutor(not v)
+        Fluent:Notify({
+            Title = "Executor",
+            Content = v and "Executor escondido. Digite .hub pra voltar." or "Executor visível.",
+            Duration = 4
+        })
+    end
 })
 
 Tabs.Misc:AddButton({
-    Title = "Desativar Bypass",
-    Description = "Restaura GUIs do executor",
-    Callback = function() ShowAll(); bypassActive = false end
-})
-
-Tabs.Misc:AddButton({
-    Title = "Restaurar Hitboxes",
-    Description = "Volta ao tamanho original",
+    Title = "Alternar Executor (.hub / .hide)",
+    Description = "Atalho rápido de visibilidade",
     Callback = function()
-        RestoreAllHitboxes()
-        Fluent:Notify({ Title = "LpMods", Content = "Hitboxes restauradas.", Duration = 4 })
+        AlternarExecutor()
+    end
+})
+
+Tabs.Discord:AddButton({
+    Title = "Copiar Link do Discord",
+    Description = "https://discord.gg/zSQPNz8",
+    Callback = function()
+        setclipboard("https://discord.gg/zSQPNz8")
+        Fluent:Notify({ Title = "LpMods", Content = "Link do Discord copiado!", Duration = 4 })
     end
 })
 
@@ -638,18 +648,5 @@ task.spawn(function()
         end
     end
 end)
-
-Tabs.Discord:AddButton({
-    Title = "Copiar Link do Discord",
-    Description = "https://discord.gg/zSQPNz8",
-    Callback = function()
-        setclipboard("https://discord.gg/zSQPNz8")
-        Fluent:Notify({
-            Title = "LpMods",
-            Content = "Link do Discord copiado!",
-            Duration = 4
-        })
-    end
-})
 
 Window:SelectTab(1)
