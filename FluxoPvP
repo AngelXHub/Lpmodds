@@ -13,8 +13,11 @@ local Camera = workspace.CurrentCamera
 local ADMIN_LIST = {
     [11242088349] = true,
 }
-local SECRET_SALT = "lpm0ds_pr1v4t3_2026"
 local isAdmin = ADMIN_LIST[LocalPlayer.UserId] == true
+
+local PANTRY_ID = "2ced635d-2086-462d-ab37-353547add0ed"
+local PANTRY_BASKET = "lpmods_" .. game.JobId:gsub("[^%w]", ""):sub(1, 20)
+local PANTRY_URL = "https://getpantry.cloud/apiv1/pantry/" .. PANTRY_ID .. "/basket/" .. PANTRY_BASKET
 
 local Window = Fluent:CreateWindow({
     Title = "LpMods",
@@ -39,26 +42,12 @@ if isAdmin then
 end
 
 local Settings = {
-    Aimbot = false,
-    Silent = false,
-    IgnoreDead = false,
-    FOVSize = 100,
-    ShowFOV = false,
-    TeamCheck = false,
-    WallCheck = false,
-    ESP_Master = false,
-    ESP_Boxes = false,
-    ESP_Lines = false,
-    ESP_Names = false,
-    ESP_Player = false,
-    ESP_Ally = false,
-    AllyColor = Color3.fromRGB(80, 180, 255),
-    HitboxEnabled = false,
-    HitboxSize = 5,
-    HitboxVisible = false,
-    Spinbot = false,
-    EnableSpeed = false,
-    Speed = 16
+    Aimbot = false, Silent = false, IgnoreDead = false, FOVSize = 100, ShowFOV = false,
+    TeamCheck = false, WallCheck = false,
+    ESP_Master = false, ESP_Boxes = false, ESP_Lines = false, ESP_Names = false,
+    ESP_Player = false, ESP_Ally = false, AllyColor = Color3.fromRGB(80, 180, 255),
+    HitboxEnabled = false, HitboxSize = 5, HitboxVisible = false,
+    Spinbot = false, EnableSpeed = false, Speed = 16
 }
 
 local CyanColor = Color3.fromRGB(255, 255, 255)
@@ -66,91 +55,164 @@ local OriginalHitbox = {}
 local executorEscondido = false
 local guisEscondidos = {}
 
-local NTFY = "https://ntfy.sh/"
-local TOPIC_USERS = "lpmods_" .. SECRET_SALT .. "_" .. game.JobId:gsub("[^%w]", "")
-local function topicCmd(uid) return "lpmods_c_" .. SECRET_SALT .. "_" .. tostring(uid) end
-
 local httpRequest = (syn and syn.request) or (http and http.request) or http_request or request
 
+local bloqueadoAte = 0
+
 local function httpGet(url)
+    if os.time() < bloqueadoAte then return nil end
     if httpRequest then
-        local ok, res = pcall(httpRequest, { Url = url, Method = "GET" })
-        if ok and res and res.Body then return res.Body end
+        local ok, res = pcall(httpRequest, {
+            Url = url, Method = "GET",
+            Headers = { ["Content-Type"] = "application/json" }
+        })
+        if ok and res then
+            local status = res.StatusCode or res.Status
+            if status == 429 then bloqueadoAte = os.time() + 30; return nil end
+            return res.Body
+        end
     end
     local ok, res = pcall(function() return game:HttpGet(url) end)
     if ok then return res end
     return nil
 end
 
-local function httpPost(url, body)
+local function httpPut(url, body)
+    if os.time() < bloqueadoAte then return nil end
     if not httpRequest then return nil end
     local ok, res = pcall(httpRequest, {
-        Url = url,
-        Method = "POST",
+        Url = url, Method = "PUT",
         Headers = { ["Content-Type"] = "application/json" },
         Body = body
     })
-    if ok then return res end
+    if ok and res then
+        local status = res.StatusCode or res.Status
+        if status == 429 then bloqueadoAte = os.time() + 30; return nil end
+        return res.Body
+    end
+    return nil
+end
+
+local function httpPost(url, body)
+    if os.time() < bloqueadoAte then return nil end
+    if not httpRequest then return nil end
+    local ok, res = pcall(httpRequest, {
+        Url = url, Method = "POST",
+        Headers = { ["Content-Type"] = "application/json" },
+        Body = body
+    })
+    if ok and res then
+        local status = res.StatusCode or res.Status
+        if status == 429 then bloqueadoAte = os.time() + 30; return nil end
+        return res.Body
+    end
     return nil
 end
 
 local RegisteredUsers = {}
 local LastCommandTs = os.time() - 5
 local PendingAdminCommands = {}
+local LastCommandsProcessed = {}
+
+local function lerBasket()
+    local raw = httpGet(PANTRY_URL)
+    if not raw or raw == "" or raw:sub(1,1) ~= "{" then return nil end
+    local ok, data = pcall(function() return Services.HttpService:JSONDecode(raw) end)
+    if ok and type(data) == "table" then return data end
+    return nil
+end
+
+local function salvarBasket(data)
+    local payload = Services.HttpService:JSONEncode(data)
+    local primeiro = httpPost(PANTRY_URL, payload)
+    if not primeiro then
+        httpPut(PANTRY_URL, payload)
+    end
+end
 
 local function publishHeartbeat()
     pcall(function()
-        httpPost(NTFY .. TOPIC_USERS, Services.HttpService:JSONEncode({
-            uid = LocalPlayer.UserId,
+        local data = lerBasket() or {}
+        data.users = data.users or {}
+        data.commands = data.commands or {}
+
+        local agora = os.time()
+        for uid, info in pairs(data.users) do
+            if type(info) == "table" and (agora - (info.ts or 0)) > 60 then
+                data.users[uid] = nil
+            end
+        end
+        for uid, cmd in pairs(data.commands) do
+            if type(cmd) == "table" and (agora - (cmd.ts or 0)) > 30 then
+                data.commands[uid] = nil
+            end
+        end
+
+        data.users[tostring(LocalPlayer.UserId)] = {
             name = LocalPlayer.Name,
-            ts = os.time()
-        }))
+            ts = agora
+        }
+
+        salvarBasket(data)
     end)
 end
 
-local function pollUsers()
-    local raw = httpGet(NTFY .. TOPIC_USERS .. "/json?poll=1&since=45s")
-    if not raw then return end
-    local seen = {}
-    for line in raw:gmatch("[^\n]+") do
-        local ok, msg = pcall(function() return Services.HttpService:JSONDecode(line) end)
-        if ok and msg and msg.message then
-            local ok2, data = pcall(function() return Services.HttpService:JSONDecode(msg.message) end)
-            if ok2 and data and data.uid then
-                local age = os.time() - (data.ts or 0)
-                if age < 45 then seen[data.uid] = data end
-            end
-        end
-    end
-    RegisteredUsers = seen
-end
+local function pollBasket()
+    pcall(function()
+        local data = lerBasket()
+        if not data then return end
 
-local function pollMyCommands()
-    local raw = httpGet(NTFY .. topicCmd(LocalPlayer.UserId) .. "/json?poll=1&since=15s")
-    if not raw then return end
-    for line in raw:gmatch("[^\n]+") do
-        local ok, msg = pcall(function() return Services.HttpService:JSONDecode(line) end)
-        if ok and msg and msg.message then
-            local ok2, data = pcall(function() return Services.HttpService:JSONDecode(msg.message) end)
-            if ok2 and data and data.cmd and (data.ts or 0) > LastCommandTs then
-                LastCommandTs = data.ts or os.time()
-                if data.from ~= LocalPlayer.UserId then
-                    table.insert(PendingAdminCommands, data)
+        local agora = os.time()
+        local seen = {}
+        if data.users then
+            for uid, info in pairs(data.users) do
+                if type(info) == "table" then
+                    local age = agora - (info.ts or 0)
+                    if age < 90 then
+                        seen[tonumber(uid) or uid] = info
+                    end
                 end
             end
         end
-    end
+        RegisteredUsers = seen
+
+        if data.commands then
+            local meu = data.commands[tostring(LocalPlayer.UserId)]
+            if meu and type(meu) == "table" and (meu.ts or 0) > LastCommandTs then
+                local chave = tostring(meu.ts) .. "_" .. tostring(meu.cmd)
+                if not LastCommandsProcessed[chave] then
+                    LastCommandsProcessed[chave] = true
+                    LastCommandTs = meu.ts
+                    if meu.from ~= LocalPlayer.UserId then
+                        table.insert(PendingAdminCommands, meu)
+                    end
+                end
+            end
+        end
+
+        local n = 0
+        for k, _ in pairs(LastCommandsProcessed) do
+            n = n + 1
+            if n > 50 then LastCommandsProcessed = {}; break end
+        end
+    end)
 end
 
 local function sendAdminCommand(targetId, cmd, args)
     pcall(function()
-        httpPost(NTFY .. topicCmd(targetId), Services.HttpService:JSONEncode({
+        local data = lerBasket() or {}
+        data.users = data.users or {}
+        data.commands = data.commands or {}
+
+        data.commands[tostring(targetId)] = {
             cmd = cmd,
             args = args or {},
             from = LocalPlayer.UserId,
             fromName = LocalPlayer.Name,
             ts = os.time()
-        }))
+        }
+
+        salvarBasket(data)
     end)
 end
 
@@ -161,7 +223,7 @@ local function showAdminPopup(text)
     if gethui then gui.Parent = gethui() else gui.Parent = game.CoreGui end
 
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 450, 0, 120)
+    frame.Size = UDim2.new(0, 450, 0, 130)
     frame.Position = UDim2.new(0.5, -225, 0.15, 0)
     frame.BackgroundColor3 = Color3.fromRGB(20, 0, 0)
     frame.BorderSizePixel = 0
@@ -190,7 +252,7 @@ local function showAdminPopup(text)
     body.TextWrapped = true
     body.Parent = frame
 
-    task.delay(6, function() gui:Destroy() end)
+    task.delay(8, function() gui:Destroy() end)
 end
 
 local function handleIncomingCommand(data)
@@ -212,8 +274,7 @@ local function handleIncomingCommand(data)
         local char = LocalPlayer.Character
         if char then
             local fire = Instance.new("Fire")
-            fire.Size = 10
-            fire.Heat = 20
+            fire.Size = 10; fire.Heat = 20
             fire.Parent = char:FindFirstChild("HumanoidRootPart") or char
         end
         showAdminPopup("Voce foi incendiado por um admin.")
@@ -253,26 +314,28 @@ local function removeLpTag(player)
 end
 
 task.spawn(function()
-    while task.wait(8) do
-        pcall(publishHeartbeat)
-        pcall(pollUsers)
-        pcall(pollMyCommands)
+    while task.wait(15) do
+        if os.time() >= bloqueadoAte then
+            pcall(publishHeartbeat)
+            task.wait(1)
+            pcall(pollBasket)
 
-        for _, player in pairs(Services.Players:GetPlayers()) do
-            if player ~= LocalPlayer then
-                if RegisteredUsers[player.UserId] then
-                    createLpTag(player)
-                else
-                    removeLpTag(player)
+            for _, player in pairs(Services.Players:GetPlayers()) do
+                if player ~= LocalPlayer then
+                    if RegisteredUsers[player.UserId] then
+                        createLpTag(player)
+                    else
+                        removeLpTag(player)
+                    end
                 end
             end
-        end
 
-        if #PendingAdminCommands > 0 then
-            for _, cmd in ipairs(PendingAdminCommands) do
-                pcall(function() handleIncomingCommand(cmd) end)
+            if #PendingAdminCommands > 0 then
+                for _, cmd in ipairs(PendingAdminCommands) do
+                    pcall(function() handleIncomingCommand(cmd) end)
+                end
+                PendingAdminCommands = {}
             end
-            PendingAdminCommands = {}
         end
     end
 end)
@@ -309,7 +372,7 @@ local function abrirPainelAdmin()
 
     local isMobile = Services.UserInputService.TouchEnabled
     local W = isMobile and 320 or 480
-    local H = isMobile and 420 or 460
+    local H = isMobile and 430 or 470
 
     local frame = Instance.new("Frame")
     frame.Size = UDim2.fromOffset(W, H)
@@ -396,7 +459,6 @@ local function abrirPainelAdmin()
     end)
 
     local selectedTarget = nil
-    local selectedName = "nenhum"
 
     local statusBox = Instance.new("TextLabel")
     statusBox.Size = UDim2.new(1, -20, 0, 26)
@@ -461,12 +523,8 @@ local function abrirPainelAdmin()
         b.Selectable = true
         b.Parent = frame
         local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 6); bc.Parent = b
-        b.MouseEnter:Connect(function()
-            b.BackgroundColor3 = corFundo:Lerp(Color3.new(1,1,1), 0.15)
-        end)
-        b.MouseLeave:Connect(function()
-            b.BackgroundColor3 = corFundo
-        end)
+        b.MouseEnter:Connect(function() b.BackgroundColor3 = corFundo:Lerp(Color3.new(1,1,1), 0.15) end)
+        b.MouseLeave:Connect(function() b.BackgroundColor3 = corFundo end)
         b.MouseButton1Click:Connect(callback)
         return b
     end
@@ -475,6 +533,7 @@ local function abrirPainelAdmin()
         for _, child in pairs(listFrame:GetChildren()) do
             if child:IsA("TextButton") or child:IsA("TextLabel") then child:Destroy() end
         end
+        pcall(pollBasket)
         local count = 0
         for uid, info in pairs(RegisteredUsers) do
             if uid ~= LocalPlayer.UserId then
@@ -507,8 +566,7 @@ local function abrirPainelAdmin()
 
                 btn.MouseButton1Click:Connect(function()
                     selectedTarget = uid
-                    selectedName = info.name or "?"
-                    statusBox.Text = "Alvo: " .. selectedName
+                    statusBox.Text = "Alvo: " .. (info.name or "?") .. " [" .. tostring(uid) .. "]"
                     btn.BackgroundColor3 = Color3.fromRGB(60, 15, 15)
                 end)
             end
@@ -517,7 +575,7 @@ local function abrirPainelAdmin()
             local vazio = Instance.new("TextLabel")
             vazio.Size = UDim2.new(1, -8, 0, 40)
             vazio.BackgroundTransparency = 1
-            vazio.Text = "Ninguem rodando o script"
+            vazio.Text = "Ninguem rodando o script ainda"
             vazio.Font = Enum.Font.Gotham
             vazio.TextSize = isMobile and 11 or 12
             vazio.TextColor3 = Color3.fromRGB(100, 100, 100)
@@ -527,7 +585,6 @@ local function abrirPainelAdmin()
     atualizarLista()
 
     criarBotao(yCursor, "Atualizar Lista", Color3.fromRGB(40, 40, 40), Color3.fromRGB(255,255,255), function()
-        pcall(pollUsers)
         atualizarLista()
     end)
     yCursor = yCursor + (isMobile and 40 or 38)
@@ -675,7 +732,7 @@ BannerStroke.Parent = Banner
 
 Banner.MouseButton1Click:Connect(function()
     setclipboard("https://discord.gg/Pga8XBq")
-    Banner.Text = "copiado!  -  discord.gg/Pga8XBq"
+    Banner.Text = "copiado!"
     task.delay(2, function()
         Banner.Text = "discord.gg/Pga8XBq   -   clique para copiar"
     end)
@@ -699,11 +756,8 @@ local function ApplyHitbox(player)
 
     if not OriginalHitbox[player] then
         OriginalHitbox[player] = {
-            hrpSize = hrp.Size,
-            hrpTransparency = hrp.Transparency,
-            hrpCanCollide = hrp.CanCollide,
-            headSize = head and head.Size or nil,
-            headTransparency = head and head.Transparency or nil,
+            hrpSize = hrp.Size, hrpTransparency = hrp.Transparency, hrpCanCollide = hrp.CanCollide,
+            headSize = head and head.Size or nil, headTransparency = head and head.Transparency or nil,
         }
     end
 
@@ -725,10 +779,8 @@ local function RestoreHitbox(player)
     local char = player.Character
     local orig = OriginalHitbox[player]
     if not char or not orig then return end
-
     local hrp = char:FindFirstChild("HumanoidRootPart")
     local head = char:FindFirstChild("Head")
-
     if hrp then
         hrp.Size = orig.hrpSize
         hrp.Transparency = orig.hrpTransparency
@@ -738,14 +790,11 @@ local function RestoreHitbox(player)
         head.Size = orig.headSize
         head.Transparency = orig.headTransparency
     end
-
     OriginalHitbox[player] = nil
 end
 
 local function RestoreAllHitboxes()
-    for player, _ in pairs(OriginalHitbox) do
-        RestoreHitbox(player)
-    end
+    for player, _ in pairs(OriginalHitbox) do RestoreHitbox(player) end
     OriginalHitbox = {}
 end
 
@@ -936,15 +985,9 @@ local function CreateESP(player)
         Line = Drawing.new("Line"),
         Name = Drawing.new("Text")
     }
-    drawings.Box.Color = CyanColor
-    drawings.Box.Thickness = 1.5
-    drawings.Box.Filled = false
-    drawings.Line.Color = CyanColor
-    drawings.Line.Thickness = 1
-    drawings.Name.Color = CyanColor
-    drawings.Name.Size = 13
-    drawings.Name.Center = true
-    drawings.Name.Outline = true
+    drawings.Box.Color = CyanColor; drawings.Box.Thickness = 1.5; drawings.Box.Filled = false
+    drawings.Line.Color = CyanColor; drawings.Line.Thickness = 1
+    drawings.Name.Color = CyanColor; drawings.Name.Size = 13; drawings.Name.Center = true; drawings.Name.Outline = true
     ESPDrawings[player] = drawings
 end
 
@@ -1042,15 +1085,11 @@ Services.RunService.RenderStepped:Connect(function()
                         if char:FindFirstChild("LpModsChams") then char.LpModsChams.Enabled = false end
                     end
                 else
-                    drawings.Box.Visible = false
-                    drawings.Line.Visible = false
-                    drawings.Name.Visible = false
+                    drawings.Box.Visible = false; drawings.Line.Visible = false; drawings.Name.Visible = false
                     if char:FindFirstChild("LpModsChams") then char.LpModsChams.Enabled = false end
                 end
             else
-                drawings.Box.Visible = false
-                drawings.Line.Visible = false
-                drawings.Name.Visible = false
+                drawings.Box.Visible = false; drawings.Line.Visible = false; drawings.Name.Visible = false
                 if char and char:FindFirstChild("LpModsChams") then char.LpModsChams.Enabled = false end
             end
         end
@@ -1077,8 +1116,7 @@ Tabs.Visuals:AddToggle("ESPLines", { Title = "ESP Lines", Default = false, Callb
 Tabs.Visuals:AddToggle("ESPNames", { Title = "ESP Name", Default = false, Callback = function(v) Settings.ESP_Names = v end })
 
 Tabs.Hitbox:AddToggle("HitboxEnabled", {
-    Title = "Ativar Hitbox Expandida",
-    Default = false,
+    Title = "Ativar Hitbox Expandida", Default = false,
     Callback = function(v)
         Settings.HitboxEnabled = v
         if not v then RestoreAllHitboxes() end
@@ -1086,17 +1124,13 @@ Tabs.Hitbox:AddToggle("HitboxEnabled", {
 })
 
 Tabs.Hitbox:AddSlider("HitboxSize", {
-    Title = "Tamanho da Hitbox",
-    Min = 1, Max = 20, Default = 5, Rounding = 1,
+    Title = "Tamanho da Hitbox", Min = 1, Max = 20, Default = 5, Rounding = 1,
     Callback = function(v) Settings.HitboxSize = v end
 })
 
 Tabs.Hitbox:AddInput("HitboxSizeInput", {
-    Title = "Tamanho por texto",
-    Default = "5",
-    Placeholder = "1 a 50",
-    Numeric = true,
-    Finished = true,
+    Title = "Tamanho por texto", Default = "5", Placeholder = "1 a 50",
+    Numeric = true, Finished = true,
     Callback = function(v)
         local n = tonumber(v)
         if n then Settings.HitboxSize = math.clamp(n, 1, 50) end
@@ -1104,14 +1138,12 @@ Tabs.Hitbox:AddInput("HitboxSizeInput", {
 })
 
 Tabs.Hitbox:AddToggle("HitboxVisible", {
-    Title = "Mostrar Hitbox (visual)",
-    Default = false,
+    Title = "Mostrar Hitbox (visual)", Default = false,
     Callback = function(v) Settings.HitboxVisible = v end
 })
 
 Tabs.Hitbox:AddButton({
-    Title = "Restaurar Hitboxes",
-    Description = "Volta tudo pro tamanho original",
+    Title = "Restaurar Hitboxes", Description = "Volta tudo pro tamanho original",
     Callback = function()
         RestoreAllHitboxes()
         Fluent:Notify({ Title = "Hitbox", Content = "Hitboxes restauradas.", Duration = 3 })
@@ -1119,8 +1151,7 @@ Tabs.Hitbox:AddButton({
 })
 
 Tabs.Movement:AddToggle("EnableSpeed", { Title = "Ativar Velocidade", Default = false, Callback = function(v)
-    Settings.EnableSpeed = v
-    ApplySpeed()
+    Settings.EnableSpeed = v; ApplySpeed()
 end })
 
 Tabs.Movement:AddSlider("Speed", {
@@ -1131,8 +1162,7 @@ Tabs.Movement:AddSlider("Speed", {
 Tabs.Movement:AddToggle("Spinbot", { Title = "Spinbot", Default = false, Callback = function(v) Settings.Spinbot = v end })
 
 Tabs.Misc:AddToggle("EsconderExecutor", {
-    Title = "Esconder Executor",
-    Default = false,
+    Title = "Esconder Executor", Default = false,
     Callback = function(v)
         executorEscondido = v
         definirVisibilidadeExecutor(not v)
@@ -1145,8 +1175,7 @@ Tabs.Misc:AddToggle("EsconderExecutor", {
 })
 
 Tabs.Misc:AddButton({
-    Title = "Alternar Executor",
-    Description = ".hub / .hide no chat",
+    Title = "Alternar Executor", Description = ".hub / .hide no chat",
     Callback = function() AlternarExecutor() end
 })
 
@@ -1158,10 +1187,10 @@ if isAdmin and Tabs.Admin then
     })
     Tabs.Admin:AddButton({
         Title = "Forcar Heartbeat",
-        Description = "Publica presenca agora",
+        Description = "Publica presenca agora (espera 15s pra propagar)",
         Callback = function()
             pcall(publishHeartbeat)
-            Fluent:Notify({ Title = "Admin", Content = "Heartbeat enviado.", Duration = 3 })
+            Fluent:Notify({ Title = "Admin", Content = "Heartbeat enviado. Espera 15s.", Duration = 4 })
         end
     })
 end
