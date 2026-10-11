@@ -19,7 +19,7 @@ local ADMIN_LIST = {
 }
 local isAdmin = ADMIN_LIST[LocalPlayer.UserId] == true
 
-local PANTRY_ID = "2ced635d-2086-462d-ab37-353547add0ed"
+local PANTRY_ID = "a4fcaa65-7a9a-488e-a690-1da69337666a"
 local JOB = game.JobId:gsub("[^%w]", ""):sub(1, 20)
 local USERS_URL = "https://getpantry.cloud/apiv1/pantry/" .. PANTRY_ID .. "/basket/lpu_" .. JOB
 local function cmdUrl(uid)
@@ -1200,6 +1200,17 @@ if isAdmin and Tabs.Admin then
         Callback = function()
             pcall(publishHeartbeat)
             Fluent:Notify({ Title = "Admin", Content = "Heartbeat enviado. Espera 5s.", Duration = 4 })
+        end
+    })
+    Tabs.Admin:AddButton({
+        Title = "DEBUG - Ver basket",
+        Callback = function()
+            local raw = httpGet(USERS_URL)
+            Fluent:Notify({
+                Title = "DEBUG",
+                Content = raw and ("Tam: " .. #raw .. " | " .. raw:sub(1, 120)) or "NIL",
+                Duration = 15
+            })
         end
     })
 end
