@@ -1,5 +1,4 @@
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
 local Services = {
     Players = game:GetService("Players"),
@@ -292,136 +291,276 @@ end)
 local function abrirPainelAdmin()
     if not isAdmin then return end
 
-    local AdminWindow = WindUI:CreateWindow({
-        Title = "LP Admin",
-        Icon = "shield",
-        Author = "by LpMods",
-        Folder = "LpAdmin",
-        Size = UDim2.fromOffset(500, 400),
-        Transparent = true,
-        Theme = "Dark",
-        User = { Enabled = false },
-        SideBarWidth = 140
-    })
+    if game.CoreGui:FindFirstChild("LpAdminPainel") then
+        game.CoreGui.LpAdminPainel:Destroy()
+    end
 
-    local PlayersTab = AdminWindow:Tab({ Title = "Players", Icon = "users" })
-    local ActionsTab = AdminWindow:Tab({ Title = "Actions", Icon = "zap" })
-    local InfoTab    = AdminWindow:Tab({ Title = "Info", Icon = "info" })
+    local PainelGui = Instance.new("ScreenGui")
+    PainelGui.Name = "LpAdminPainel"
+    PainelGui.ResetOnSpawn = false
+    PainelGui.IgnoreGuiInset = true
+    if syn and syn.protect_gui then
+        syn.protect_gui(PainelGui); PainelGui.Parent = game.CoreGui
+    elseif gethui then
+        PainelGui.Parent = gethui()
+    else
+        PainelGui.Parent = game.CoreGui
+    end
+
+    local isMobile = Services.UserInputService.TouchEnabled
+    local W = isMobile and 320 or 480
+    local H = isMobile and 420 or 460
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.fromOffset(W, H)
+    frame.Position = UDim2.new(0.5, -W/2, 0.5, -H/2)
+    frame.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Draggable = true
+    frame.Parent = PainelGui
+
+    local fc = Instance.new("UICorner"); fc.CornerRadius = UDim.new(0, 12); fc.Parent = frame
+    local fs = Instance.new("UIStroke"); fs.Color = Color3.fromRGB(255, 40, 40); fs.Thickness = 1.5; fs.Transparency = 0.3; fs.Parent = frame
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 40)
+    title.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+    title.BorderSizePixel = 0
+    title.Text = "LP ADMIN"
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = isMobile and 14 or 16
+    title.TextColor3 = Color3.fromRGB(255, 80, 80)
+    title.Parent = frame
+    local tc = Instance.new("UICorner"); tc.CornerRadius = UDim.new(0, 12); tc.Parent = title
+
+    local titleFix = Instance.new("Frame")
+    titleFix.Size = UDim2.new(1, 0, 0, 12)
+    titleFix.Position = UDim2.new(0, 0, 1, -12)
+    titleFix.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+    titleFix.BorderSizePixel = 0
+    titleFix.Parent = title
+
+    local closeB = Instance.new("TextButton")
+    closeB.Size = UDim2.fromOffset(32, 32)
+    closeB.Position = UDim2.new(1, -38, 0, 4)
+    closeB.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    closeB.BorderSizePixel = 0
+    closeB.Text = "X"
+    closeB.Font = Enum.Font.GothamBold
+    closeB.TextSize = 14
+    closeB.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeB.AutoButtonColor = false
+    closeB.Active = true
+    closeB.Parent = title
+    local cc = Instance.new("UICorner"); cc.CornerRadius = UDim.new(0, 8); cc.Parent = closeB
+    closeB.MouseButton1Click:Connect(function() PainelGui:Destroy() end)
+
+    local listLabel = Instance.new("TextLabel")
+    listLabel.Size = UDim2.new(1, -20, 0, 20)
+    listLabel.Position = UDim2.new(0, 10, 0, 46)
+    listLabel.BackgroundTransparency = 1
+    listLabel.Text = "USUARIOS DO SCRIPT"
+    listLabel.Font = Enum.Font.GothamBold
+    listLabel.TextSize = isMobile and 10 or 11
+    listLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+    listLabel.TextXAlignment = Enum.TextXAlignment.Left
+    listLabel.Parent = frame
+
+    local listH = isMobile and 110 or 130
+
+    local listFrame = Instance.new("ScrollingFrame")
+    listFrame.Size = UDim2.new(1, -20, 0, listH)
+    listFrame.Position = UDim2.new(0, 10, 0, 68)
+    listFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    listFrame.BorderSizePixel = 0
+    listFrame.ScrollBarThickness = isMobile and 6 or 4
+    listFrame.ScrollBarImageColor3 = Color3.fromRGB(255, 40, 40)
+    listFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    listFrame.Parent = frame
+    local lc = Instance.new("UICorner"); lc.CornerRadius = UDim.new(0, 8); lc.Parent = listFrame
+
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.Padding = UDim.new(0, 4)
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    listLayout.Parent = listFrame
+
+    local listPad = Instance.new("UIPadding")
+    listPad.PaddingTop = UDim.new(0, 4)
+    listPad.PaddingLeft = UDim.new(0, 4)
+    listPad.PaddingRight = UDim.new(0, 4)
+    listPad.Parent = listFrame
+
+    listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        listFrame.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y + 12)
+    end)
 
     local selectedTarget = nil
-    local statusLabel
+    local selectedName = "nenhum"
 
-    PlayersTab:Paragraph({ Title = "Usuarios do Script", Desc = "Quem ta rodando o LpMods agora" })
+    local statusBox = Instance.new("TextLabel")
+    statusBox.Size = UDim2.new(1, -20, 0, 26)
+    statusBox.Position = UDim2.new(0, 10, 0, 68 + listH + 6)
+    statusBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    statusBox.BorderSizePixel = 0
+    statusBox.Text = "Alvo: nenhum"
+    statusBox.Font = Enum.Font.GothamBold
+    statusBox.TextSize = isMobile and 11 or 12
+    statusBox.TextColor3 = Color3.fromRGB(255, 200, 0)
+    statusBox.TextXAlignment = Enum.TextXAlignment.Left
+    statusBox.Parent = frame
+    local sbc = Instance.new("UICorner"); sbc.CornerRadius = UDim.new(0, 6); sbc.Parent = statusBox
+    local sbp = Instance.new("UIPadding"); sbp.PaddingLeft = UDim.new(0, 8); sbp.Parent = statusBox
 
-    statusLabel = PlayersTab:Section({
-        Title = "Alvo selecionado",
-        TextXAlignment = "Left",
-        TextSize = 15,
-        Text = "Nenhum",
-        TextColor = Color3.fromRGB(255, 200, 0)
-    })
+    local yCursor = 68 + listH + 36
 
-    local function atualizarListaWind()
-        pcall(pollUsers)
+    local reasonLabel = Instance.new("TextLabel")
+    reasonLabel.Size = UDim2.new(1, -20, 0, 16)
+    reasonLabel.Position = UDim2.new(0, 10, 0, yCursor)
+    reasonLabel.BackgroundTransparency = 1
+    reasonLabel.Text = "MOTIVO DO KICK / MENSAGEM"
+    reasonLabel.Font = Enum.Font.GothamBold
+    reasonLabel.TextSize = isMobile and 10 or 11
+    reasonLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+    reasonLabel.TextXAlignment = Enum.TextXAlignment.Left
+    reasonLabel.Parent = frame
+    yCursor = yCursor + 20
+
+    local reasonBox = Instance.new("TextBox")
+    reasonBox.Size = UDim2.new(1, -20, 0, isMobile and 34 or 32)
+    reasonBox.Position = UDim2.new(0, 10, 0, yCursor)
+    reasonBox.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    reasonBox.BorderSizePixel = 0
+    reasonBox.PlaceholderText = "Digite o motivo aqui..."
+    reasonBox.PlaceholderColor3 = Color3.fromRGB(100, 100, 100)
+    reasonBox.Text = ""
+    reasonBox.Font = Enum.Font.Gotham
+    reasonBox.TextSize = isMobile and 12 or 13
+    reasonBox.TextColor3 = Color3.fromRGB(240, 240, 240)
+    reasonBox.TextXAlignment = Enum.TextXAlignment.Left
+    reasonBox.ClearTextOnFocus = false
+    reasonBox.Active = true
+    reasonBox.Parent = frame
+    local rbc = Instance.new("UICorner"); rbc.CornerRadius = UDim.new(0, 6); rbc.Parent = reasonBox
+    local rbp = Instance.new("UIPadding"); rbp.PaddingLeft = UDim.new(0, 8); rbp.Parent = reasonBox
+
+    yCursor = yCursor + (isMobile and 42 or 40)
+
+    local function criarBotao(y, texto, corFundo, corTexto, callback)
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.new(1, -20, 0, isMobile and 34 or 32)
+        b.Position = UDim2.new(0, 10, 0, y)
+        b.BackgroundColor3 = corFundo
+        b.BorderSizePixel = 0
+        b.Text = texto
+        b.Font = Enum.Font.GothamBold
+        b.TextSize = isMobile and 12 or 13
+        b.TextColor3 = corTexto
+        b.AutoButtonColor = false
+        b.Active = true
+        b.Selectable = true
+        b.Parent = frame
+        local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 6); bc.Parent = b
+        b.MouseEnter:Connect(function()
+            b.BackgroundColor3 = corFundo:Lerp(Color3.new(1,1,1), 0.15)
+        end)
+        b.MouseLeave:Connect(function()
+            b.BackgroundColor3 = corFundo
+        end)
+        b.MouseButton1Click:Connect(callback)
+        return b
+    end
+
+    local function atualizarLista()
+        for _, child in pairs(listFrame:GetChildren()) do
+            if child:IsA("TextButton") or child:IsA("TextLabel") then child:Destroy() end
+        end
         local count = 0
         for uid, info in pairs(RegisteredUsers) do
             if uid ~= LocalPlayer.UserId then
                 count = count + 1
-                PlayersTab:Button({
-                    Title = (info.name or "?") .. "  [" .. tostring(uid) .. "]",
-                    Desc = "UID: " .. tostring(uid),
-                    Callback = function()
-                        selectedTarget = uid
-                        pcall(function()
-                            statusLabel:SetTitle("Alvo: " .. (info.name or "?") .. " [" .. tostring(uid) .. "]")
-                        end)
-                    end
-                })
+                local btn = Instance.new("TextButton")
+                btn.Size = UDim2.new(1, 0, 0, isMobile and 34 or 32)
+                btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+                btn.BorderSizePixel = 0
+                btn.Text = "  " .. (info.name or "?")
+                btn.Font = Enum.Font.GothamMedium
+                btn.TextSize = isMobile and 12 or 13
+                btn.TextColor3 = Color3.fromRGB(230, 230, 230)
+                btn.TextXAlignment = Enum.TextXAlignment.Left
+                btn.AutoButtonColor = false
+                btn.Active = true
+                btn.Selectable = true
+                btn.Parent = listFrame
+                local b = Instance.new("UICorner"); b.CornerRadius = UDim.new(0, 6); b.Parent = btn
+
+                local uidLabel = Instance.new("TextLabel")
+                uidLabel.Size = UDim2.new(0, 90, 1, 0)
+                uidLabel.Position = UDim2.new(1, -95, 0, 0)
+                uidLabel.BackgroundTransparency = 1
+                uidLabel.Text = tostring(uid)
+                uidLabel.Font = Enum.Font.Gotham
+                uidLabel.TextSize = isMobile and 10 or 11
+                uidLabel.TextColor3 = Color3.fromRGB(120, 120, 120)
+                uidLabel.TextXAlignment = Enum.TextXAlignment.Right
+                uidLabel.Parent = btn
+
+                btn.MouseButton1Click:Connect(function()
+                    selectedTarget = uid
+                    selectedName = info.name or "?"
+                    statusBox.Text = "Alvo: " .. selectedName
+                    btn.BackgroundColor3 = Color3.fromRGB(60, 15, 15)
+                end)
             end
         end
         if count == 0 then
-            PlayersTab:Paragraph({ Title = "Nenhum usuario", Desc = "Ninguem rodando o script nesse servidor ainda" })
+            local vazio = Instance.new("TextLabel")
+            vazio.Size = UDim2.new(1, -8, 0, 40)
+            vazio.BackgroundTransparency = 1
+            vazio.Text = "Ninguem rodando o script"
+            vazio.Font = Enum.Font.Gotham
+            vazio.TextSize = isMobile and 11 or 12
+            vazio.TextColor3 = Color3.fromRGB(100, 100, 100)
+            vazio.Parent = listFrame
         end
     end
+    atualizarLista()
 
-    atualizarListaWind()
+    criarBotao(yCursor, "Atualizar Lista", Color3.fromRGB(40, 40, 40), Color3.fromRGB(255,255,255), function()
+        pcall(pollUsers)
+        atualizarLista()
+    end)
+    yCursor = yCursor + (isMobile and 40 or 38)
 
-    PlayersTab:Button({
-        Title = "Atualizar Lista",
-        Desc = "Recarrega os usuarios online",
-        Callback = function() atualizarListaWind() end
-    })
+    criarBotao(yCursor, "Congelar", Color3.fromRGB(45, 10, 10), Color3.fromRGB(255, 200, 200), function()
+        if selectedTarget then sendAdminCommand(selectedTarget, "freeze") end
+    end)
+    yCursor = yCursor + (isMobile and 40 or 38)
 
-    ActionsTab:Paragraph({ Title = "Acoes do Admin", Desc = "Escolha o alvo na aba Players primeiro" })
+    criarBotao(yCursor, "Descongelar", Color3.fromRGB(20, 40, 20), Color3.fromRGB(200, 255, 200), function()
+        if selectedTarget then sendAdminCommand(selectedTarget, "unfreeze") end
+    end)
+    yCursor = yCursor + (isMobile and 40 or 38)
 
-    ActionsTab:Button({
-        Title = "Congelar",
-        Desc = "Ancora o personagem do alvo",
-        Callback = function()
-            if selectedTarget then sendAdminCommand(selectedTarget, "freeze") end
-        end
-    })
+    criarBotao(yCursor, "Incendiar", Color3.fromRGB(60, 25, 0), Color3.fromRGB(255, 200, 120), function()
+        if selectedTarget then sendAdminCommand(selectedTarget, "burn") end
+    end)
+    yCursor = yCursor + (isMobile and 40 or 38)
 
-    ActionsTab:Button({
-        Title = "Descongelar",
-        Desc = "Libera o alvo",
-        Callback = function()
-            if selectedTarget then sendAdminCommand(selectedTarget, "unfreeze") end
-        end
-    })
+    criarBotao(yCursor, "Enviar Mensagem", Color3.fromRGB(25, 25, 50), Color3.fromRGB(180, 180, 255), function()
+        if not selectedTarget then return end
+        local txt = reasonBox.Text
+        if txt == "" then txt = "Voce foi reportado por um admin." end
+        sendAdminCommand(selectedTarget, "message", { text = txt })
+    end)
+    yCursor = yCursor + (isMobile and 40 or 38)
 
-    ActionsTab:Button({
-        Title = "Incendiar",
-        Desc = "Spawna Fire no alvo",
-        Callback = function()
-            if selectedTarget then sendAdminCommand(selectedTarget, "burn") end
-        end
-    })
-
-    ActionsTab:Button({
-        Title = "Mensagem na Tela",
-        Desc = "Popup vermelho no cliente dele",
-        Callback = function()
-            if selectedTarget then
-                sendAdminCommand(selectedTarget, "message", { text = "Voce foi reportado por um admin." })
-            end
-        end
-    })
-
-    ActionsTab:Button({
-        Title = "Kickar (motivo)",
-        Desc = "Manda o alvo pra fora",
-        Callback = function()
-            if selectedTarget then
-                sendAdminCommand(selectedTarget, "kick", { reason = "Banido pelo admin " .. LocalPlayer.Name })
-            end
-        end
-    })
-
-    InfoTab:Paragraph({ Title = "Config", Desc = "Informacoes do painel" })
-    InfoTab:Paragraph({ Title = "JobId", Desc = game.JobId })
-    InfoTab:Paragraph({ Title = "Salt", Desc = SECRET_SALT })
-    InfoTab:Paragraph({ Title = "Teu UID", Desc = tostring(LocalPlayer.UserId) })
-
-    InfoTab:Button({
-        Title = "Forcar Heartbeat",
-        Desc = "Publica presenca agora",
-        Callback = function()
-            pcall(publishHeartbeat)
-            WindUI:Notify({ Title = "Admin", Content = "Heartbeat enviado.", Duration = 3 })
-        end
-    })
-
-    InfoTab:Button({
-        Title = "Limpar Registrados",
-        Desc = "Zera a lista local",
-        Callback = function()
-            RegisteredUsers = {}
-            WindUI:Notify({ Title = "Admin", Content = "Lista limpa.", Duration = 2 })
-        end
-    })
-
-    AdminWindow:SelectTab(1)
+    criarBotao(yCursor, "KICKAR", Color3.fromRGB(120, 20, 20), Color3.fromRGB(255, 230, 230), function()
+        if not selectedTarget then return end
+        local motivo = reasonBox.Text
+        if motivo == "" then motivo = "Sem motivo informado" end
+        sendAdminCommand(selectedTarget, "kick", { reason = motivo })
+    end)
 end
 
 local function ehChat(nome)
@@ -451,7 +590,6 @@ local function definirVisibilidadeExecutor(visivel)
                 and item.Name ~= "LpModsTopBanner"
                 and item.Name ~= "LpAdminPainel"
                 and not item.Name:find("Fluent")
-                and not item.Name:find("WindUI")
                 and not ehChat(item.Name) then
                 if item.Enabled then item.Enabled = false; table.insert(guisEscondidos, item) end
             end
@@ -1015,7 +1153,7 @@ Tabs.Misc:AddButton({
 if isAdmin and Tabs.Admin then
     Tabs.Admin:AddButton({
         Title = "Abrir Painel Admin",
-        Description = "WindUI - lista so quem usa o script",
+        Description = "Lista so quem usa o script",
         Callback = function() abrirPainelAdmin() end
     })
     Tabs.Admin:AddButton({
@@ -1050,4 +1188,4 @@ task.spawn(function()
     end
 end)
 
-Window:SelectT
+Window:SelectTab(1)
