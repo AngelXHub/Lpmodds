@@ -26,6 +26,7 @@ local Settings = {
     ESP_Master = false, ESP_Boxes = false, ESP_Lines = false, ESP_Names = false,
     ESP_Health = false, ESP_Ally = false, AllyColor = Color3.fromRGB(80, 180, 255),
     HitboxEnabled = false, HitboxSize = 3, HitboxVisible = false, HitboxTransparency = 0.5,
+    HitboxSkipAllies = true,
     Spinbot = false, Speed = false, SpeedValue = 16,
     NoClip = false
 }
@@ -324,7 +325,6 @@ Services.RunService.RenderStepped:Connect(function()
                 local cf, size = char:GetBoundingBox()
                 local sp, on = Camera:WorldToViewportPoint(cf.Position)
                 if on then
-                    -- COR BRANCA (CyanColor) pra inimigos, azul pra aliados
                     local col = ally and Settings.AllyColor or CyanColor
                     local topW = cf.Position + Vector3.new(0, size.Y / 2, 0)
                     local botW = cf.Position - Vector3.new(0, size.Y / 2, 0)
@@ -363,6 +363,7 @@ Services.RunService.RenderStepped:Connect(function()
     end
 end)
 
+-- HITBOX (função original)
 local function ApplyHitbox(p)
     local char = p.Character
     if not char then return end
@@ -407,8 +408,14 @@ end
 Services.RunService.Heartbeat:Connect(function()
     for _, p in ipairs(Services.Players:GetPlayers()) do
         if p ~= LocalPlayer then
-            if Settings.HitboxEnabled then ApplyHitbox(p)
-            elseif OriginalHitbox[p] then RestoreHitbox(p) end
+            -- PULA ALIADOS se HitboxSkipAllies ativo
+            local skip = Settings.HitboxSkipAllies and IsAlly(p)
+
+            if Settings.HitboxEnabled and not skip then
+                ApplyHitbox(p)
+            elseif OriginalHitbox[p] then
+                RestoreHitbox(p)
+            end
         end
     end
 end)
@@ -482,6 +489,7 @@ DBtn.MouseButton1Click:Connect(function()
     task.delay(2, function() DBtn.Text = "discord.gg/Pga8XBq" end)
 end)
 
+-- UI - COMBATE
 Tabs.Combat:AddToggle("Aimbot", { Title = "Aimbot (Lock na cabeca)", Default = false, Callback = function(v) Settings.Aimbot = v end })
 Tabs.Combat:AddToggle("TeamCheck", { Title = "Team Check", Default = true, Callback = function(v) Settings.TeamCheck = v end })
 Tabs.Combat:AddToggle("WallCheck", { Title = "Wall Check", Default = false, Callback = function(v) Settings.WallCheck = v end })
@@ -489,6 +497,7 @@ Tabs.Combat:AddToggle("IgnoreDead", { Title = "Ignorar Mortos", Default = false,
 Tabs.Combat:AddToggle("ShowFOV", { Title = "Mostrar FOV", Default = false, Callback = function(v) Settings.ShowFOV = v end })
 Tabs.Combat:AddSlider("FOVSize", { Title = "FOV", Min = 30, Max = 500, Default = 120, Rounding = 0, Callback = function(v) Settings.FOVSize = v end })
 
+-- UI - SILENT
 if isAdmin then
     Tabs.Silent:AddToggle("SilentAim", { Title = "Silent Aim", Default = false, Callback = function(v) Settings.Silent = v end })
     Tabs.Silent:AddDropdown("SilentHitPart", {
@@ -512,6 +521,7 @@ else
     })
 end
 
+-- UI - VISUALS
 Tabs.Visuals:AddToggle("ESPMaster", { Title = "ESP Master", Default = false, Callback = function(v) Settings.ESP_Master = v end })
 Tabs.Visuals:AddToggle("ESPAlly", { Title = "ESP Aliado (cor azul)", Default = false, Callback = function(v) Settings.ESP_Ally = v end })
 Tabs.Visuals:AddToggle("ESPBoxes", { Title = "ESP Boxes", Default = false, Callback = function(v) Settings.ESP_Boxes = v end })
@@ -519,6 +529,7 @@ Tabs.Visuals:AddToggle("ESPLines", { Title = "ESP Lines", Default = false, Callb
 Tabs.Visuals:AddToggle("ESPNames", { Title = "ESP Nome", Default = false, Callback = function(v) Settings.ESP_Names = v end })
 Tabs.Visuals:AddToggle("ESPHealth", { Title = "ESP Vida", Default = false, Callback = function(v) Settings.ESP_Health = v end })
 
+-- UI - HITBOX (com input + skip aliados)
 Tabs.Hitbox:AddToggle("HitboxEnabled", {
     Title = "Ativar Hitbox Expandida", Default = false,
     Callback = function(v)
@@ -526,15 +537,45 @@ Tabs.Hitbox:AddToggle("HitboxEnabled", {
         if not v then RestoreAll() end
     end
 })
-Tabs.Hitbox:AddSlider("HitboxSize", { Title = "Tamanho", Min = 1, Max = 50, Default = 3, Rounding = 1, Callback = function(v) Settings.HitboxSize = v end })
-Tabs.Hitbox:AddToggle("HitboxVisible", { Title = "Visual", Default = false, Callback = function(v) Settings.HitboxVisible = v end })
+Tabs.Hitbox:AddSlider("HitboxSize", {
+    Title = "Tamanho (slider)", Min = 1, Max = 50, Default = 3, Rounding = 1,
+    Callback = function(v) Settings.HitboxSize = v end
+})
+Tabs.Hitbox:AddInput("HitboxSizeInput", {
+    Title = "Tamanho (digite)",
+    Description = "Escreve o numero. Ex: 5, 10, 20",
+    Default = "3",
+    Placeholder = "1 a 50",
+    Numeric = true,
+    Finished = true,
+    Callback = function(v)
+        local n = tonumber(v)
+        if n then
+            Settings.HitboxSize = math.clamp(n, 1, 50)
+            Fluent:Notify({ Title = "Hitbox", Content = "Tamanho: " .. Settings.HitboxSize, Duration = 2 })
+        end
+    end
+})
+Tabs.Hitbox:AddToggle("HitboxSkipAllies", {
+    Title = "Nao expandir aliados",
+    Description = "Nao aplica hitbox em quem ta no teu time",
+    Default = true,
+    Callback = function(v) Settings.HitboxSkipAllies = v end
+})
+Tabs.Hitbox:AddToggle("HitboxVisible", { Title = "Visual (semitransparente)", Default = false, Callback = function(v) Settings.HitboxVisible = v end })
+Tabs.Hitbox:AddSlider("HitboxTransparency", {
+    Title = "Transparencia", Min = 0, Max = 1, Default = 0.5, Rounding = 0.1,
+    Callback = function(v) Settings.HitboxTransparency = v end
+})
 Tabs.Hitbox:AddButton({ Title = "Restaurar Hitboxes", Callback = function() RestoreAll() end })
 
+-- UI - MOVIMENTO
 Tabs.Movement:AddToggle("Speed", { Title = "Speed", Default = false, Callback = function(v) Settings.Speed = v end })
 Tabs.Movement:AddSlider("SpeedValue", { Title = "Velocidade", Min = 16, Max = 300, Default = 16, Rounding = 0, Callback = function(v) Settings.SpeedValue = v end })
 Tabs.Movement:AddToggle("Spinbot", { Title = "Spinbot", Default = false, Callback = function(v) Settings.Spinbot = v end })
 Tabs.Movement:AddToggle("NoClip", { Title = "NoClip", Default = false, Callback = function(v) Settings.NoClip = v end })
 
+-- UI - MISC
 Tabs.Misc:AddButton({
     Title = "Esconder Executor",
     Description = ".hub / .hide no chat",
@@ -544,6 +585,7 @@ Tabs.Misc:AddButton({
     end
 })
 
+-- UI - ADMIN
 if isAdmin then
     Tabs.Admin:AddButton({
         Title = "Forcar Heartbeat",
@@ -580,6 +622,7 @@ if isAdmin then
     })
 end
 
+-- UI - DISCORD
 Tabs.Discord:AddButton({
     Title = "Copiar Link do Discord",
     Description = "discord.gg/Pga8XBq",
