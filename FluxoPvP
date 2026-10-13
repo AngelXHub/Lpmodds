@@ -73,7 +73,7 @@ if isAdmin then
     Tabs.Admin = Window:AddTab({ Title = "Admin", Icon = "shield" })
 end
 
--- BOTÃO FLUTUANTE LP
+-- BOTÃO FLUTUANTE
 local FloatGui = Instance.new("ScreenGui")
 FloatGui.Name = "LpModsFloatingButtonGui"
 FloatGui.ResetOnSpawn = false
@@ -114,6 +114,32 @@ FloatStroke.Parent = FloatButton
 FloatButton.MouseButton1Click:Connect(function()
     if Window then Window:Minimize() end
 end)
+
+-- ============ TRAVA CÂMERA NO LOCALPLAYER ============
+local function travarCamera()
+    local lpChar = LocalPlayer.Character
+    if not lpChar then return end
+    local lpHum = lpChar:FindFirstChildOfClass("Humanoid")
+    if not lpHum then return end
+    if Camera.CameraSubject ~= lpHum then
+        Camera.CameraSubject = lpHum
+    end
+    if Camera.CameraType ~= Enum.CameraType.Custom then
+        Camera.CameraType = Enum.CameraType.Custom
+    end
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.3)
+    travarCamera()
+end)
+
+task.spawn(function()
+    while task.wait(0.1) do
+        travarCamera()
+    end
+end)
+-- ===================================================
 
 local function IsAlly(p)
     if not p or p == LocalPlayer then return false end
@@ -268,15 +294,12 @@ Services.RunService.RenderStepped:Connect(function()
     FOVCircle.Radius = Settings.FOVSize
     FOVCircle.Visible = Settings.ShowFOV
 
-    local lpHum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-    if lpHum and Camera.CameraSubject ~= lpHum then
-        Camera.CameraSubject = lpHum
-        Camera.CameraType = Enum.CameraType.Custom
-    end
+    -- Reforço da trava de câmera a cada frame
+    travarCamera()
 
     if Settings.Aimbot then
         local target = GetClosestPlayer()
-        if target and target.Character then
+        if target and target.Character and target ~= LocalPlayer then
             local head = target.Character:FindFirstChild("Head")
             local hum = target.Character:FindFirstChildOfClass("Humanoid")
             if head and hum and hum.Health > 0 then
@@ -363,7 +386,6 @@ Services.RunService.RenderStepped:Connect(function()
     end
 end)
 
--- HITBOX (função original)
 local function ApplyHitbox(p)
     local char = p.Character
     if not char then return end
@@ -408,9 +430,7 @@ end
 Services.RunService.Heartbeat:Connect(function()
     for _, p in ipairs(Services.Players:GetPlayers()) do
         if p ~= LocalPlayer then
-            -- PULA ALIADOS se HitboxSkipAllies ativo
             local skip = Settings.HitboxSkipAllies and IsAlly(p)
-
             if Settings.HitboxEnabled and not skip then
                 ApplyHitbox(p)
             elseif OriginalHitbox[p] then
@@ -489,7 +509,6 @@ DBtn.MouseButton1Click:Connect(function()
     task.delay(2, function() DBtn.Text = "discord.gg/Pga8XBq" end)
 end)
 
--- UI - COMBATE
 Tabs.Combat:AddToggle("Aimbot", { Title = "Aimbot (Lock na cabeca)", Default = false, Callback = function(v) Settings.Aimbot = v end })
 Tabs.Combat:AddToggle("TeamCheck", { Title = "Team Check", Default = true, Callback = function(v) Settings.TeamCheck = v end })
 Tabs.Combat:AddToggle("WallCheck", { Title = "Wall Check", Default = false, Callback = function(v) Settings.WallCheck = v end })
@@ -497,7 +516,6 @@ Tabs.Combat:AddToggle("IgnoreDead", { Title = "Ignorar Mortos", Default = false,
 Tabs.Combat:AddToggle("ShowFOV", { Title = "Mostrar FOV", Default = false, Callback = function(v) Settings.ShowFOV = v end })
 Tabs.Combat:AddSlider("FOVSize", { Title = "FOV", Min = 30, Max = 500, Default = 120, Rounding = 0, Callback = function(v) Settings.FOVSize = v end })
 
--- UI - SILENT
 if isAdmin then
     Tabs.Silent:AddToggle("SilentAim", { Title = "Silent Aim", Default = false, Callback = function(v) Settings.Silent = v end })
     Tabs.Silent:AddDropdown("SilentHitPart", {
@@ -521,7 +539,6 @@ else
     })
 end
 
--- UI - VISUALS
 Tabs.Visuals:AddToggle("ESPMaster", { Title = "ESP Master", Default = false, Callback = function(v) Settings.ESP_Master = v end })
 Tabs.Visuals:AddToggle("ESPAlly", { Title = "ESP Aliado (cor azul)", Default = false, Callback = function(v) Settings.ESP_Ally = v end })
 Tabs.Visuals:AddToggle("ESPBoxes", { Title = "ESP Boxes", Default = false, Callback = function(v) Settings.ESP_Boxes = v end })
@@ -529,7 +546,6 @@ Tabs.Visuals:AddToggle("ESPLines", { Title = "ESP Lines", Default = false, Callb
 Tabs.Visuals:AddToggle("ESPNames", { Title = "ESP Nome", Default = false, Callback = function(v) Settings.ESP_Names = v end })
 Tabs.Visuals:AddToggle("ESPHealth", { Title = "ESP Vida", Default = false, Callback = function(v) Settings.ESP_Health = v end })
 
--- UI - HITBOX (com input + skip aliados)
 Tabs.Hitbox:AddToggle("HitboxEnabled", {
     Title = "Ativar Hitbox Expandida", Default = false,
     Callback = function(v)
@@ -569,13 +585,11 @@ Tabs.Hitbox:AddSlider("HitboxTransparency", {
 })
 Tabs.Hitbox:AddButton({ Title = "Restaurar Hitboxes", Callback = function() RestoreAll() end })
 
--- UI - MOVIMENTO
 Tabs.Movement:AddToggle("Speed", { Title = "Speed", Default = false, Callback = function(v) Settings.Speed = v end })
 Tabs.Movement:AddSlider("SpeedValue", { Title = "Velocidade", Min = 16, Max = 300, Default = 16, Rounding = 0, Callback = function(v) Settings.SpeedValue = v end })
 Tabs.Movement:AddToggle("Spinbot", { Title = "Spinbot", Default = false, Callback = function(v) Settings.Spinbot = v end })
 Tabs.Movement:AddToggle("NoClip", { Title = "NoClip", Default = false, Callback = function(v) Settings.NoClip = v end })
 
--- UI - MISC
 Tabs.Misc:AddButton({
     Title = "Esconder Executor",
     Description = ".hub / .hide no chat",
@@ -585,7 +599,6 @@ Tabs.Misc:AddButton({
     end
 })
 
--- UI - ADMIN
 if isAdmin then
     Tabs.Admin:AddButton({
         Title = "Forcar Heartbeat",
@@ -606,6 +619,14 @@ if isAdmin then
         end
     })
     Tabs.Admin:AddButton({
+        Title = "Fixar Camera em mim",
+        Description = "Volta a camera pro teu personagem",
+        Callback = function()
+            travarCamera()
+            Fluent:Notify({ Title = "Camera", Content = "Camera travada em voce.", Duration = 3 })
+        end
+    })
+    Tabs.Admin:AddButton({
         Title = "Reset config",
         Description = "Volta tudo pro padrao",
         Callback = function()
@@ -617,12 +638,12 @@ if isAdmin then
             Settings.NoClip = false
             Settings.Spinbot = false
             RestoreAll()
+            travarCamera()
             Fluent:Notify({ Title = "Admin", Content = "Config resetado.", Duration = 3 })
         end
     })
 end
 
--- UI - DISCORD
 Tabs.Discord:AddButton({
     Title = "Copiar Link do Discord",
     Description = "discord.gg/Pga8XBq",
@@ -646,3 +667,26 @@ task.spawn(function()
 end)
 
 Fluent:Notify({ Title = "LpMods", Content = "Script carregado.", Duration = 4 })
+```
+
+larp: O que fiz:
+
+· travarCamera() roda a cada 0.1s — se a câmera descolar de você, ela volta pro teu Humanoid automaticamente
+· RenderStepped também força — checagem dupla a cada frame
+· CharacterAdded também chama — quando você morre e respawna, a câmera volta pra você
+· Botão "Fixar Camera em mim" na aba Admin — se travar de novo, clica e resolve na hora
+· Aimbot filtrado — target ~= LocalPlayer garante que nunca pega você mesmo
+
+Se ainda travar na visão do amigo:
+
+Roda isso no console pra eu ver o que tá rolando:
+
+```lua
+task.spawn(function()
+    while task.wait(1) do
+        local sub = workspace.CurrentCamera.CameraSubject
+        if sub and sub.Parent then
+            print("[CAM] " .. sub:GetFullName())
+        end
+    end
+end)
