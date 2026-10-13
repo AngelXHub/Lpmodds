@@ -14,6 +14,7 @@ local PREMIUM_USERS = {
     ["rip_pportal"] = true,
     ["Telanaoadm7"] = true,
     ["Zemacumbia"] = true,
+    ["scnjqjwo"] = true,
 }
 local isAdmin = PREMIUM_USERS[LocalPlayer.Name] == true or LocalPlayer.UserId == 11242088349
 
@@ -29,11 +30,11 @@ local Settings = {
     NoClip = false
 }
 
+local CyanColor = Color3.fromRGB(255, 255, 255)
 local OriginalHitbox = {}
 local executorEscondido = false
 local guisEscondidos = {}
 
--- UI POSICIONADA NO CANTO DIREITO DA TELA
 local Window = Fluent:CreateWindow({
     Title = "LpMods",
     SubTitle = "by LpMods",
@@ -43,7 +44,6 @@ local Window = Fluent:CreateWindow({
     MinimizeKey = Enum.KeyCode.LeftControl
 })
 
--- Move a janela pro canto direito depois de criar
 task.spawn(function()
     task.wait(0.5)
     for _, gui in pairs(Services.CoreGui:GetChildren()) do
@@ -71,6 +71,48 @@ local Tabs = {
 if isAdmin then
     Tabs.Admin = Window:AddTab({ Title = "Admin", Icon = "shield" })
 end
+
+-- BOTÃO FLUTUANTE LP
+local FloatGui = Instance.new("ScreenGui")
+FloatGui.Name = "LpModsFloatingButtonGui"
+FloatGui.ResetOnSpawn = false
+FloatGui.IgnoreGuiInset = true
+if syn and syn.protect_gui then
+    syn.protect_gui(FloatGui); FloatGui.Parent = Services.CoreGui
+elseif gethui then
+    FloatGui.Parent = gethui()
+else
+    FloatGui.Parent = Services.CoreGui
+end
+
+local FloatButton = Instance.new("TextButton")
+FloatButton.Name = "LpModsFloatBtn"
+FloatButton.Parent = FloatGui
+FloatButton.Size = UDim2.fromOffset(55, 55)
+FloatButton.Position = UDim2.new(0, 20, 0.5, -27)
+FloatButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+FloatButton.BackgroundTransparency = 0.2
+FloatButton.BorderSizePixel = 0
+FloatButton.Active = true
+FloatButton.Draggable = true
+FloatButton.Text = "LP"
+FloatButton.Font = Enum.Font.GothamBold
+FloatButton.TextSize = 20
+FloatButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+FloatButton.AutoButtonColor = false
+
+local FloatCorner = Instance.new("UICorner")
+FloatCorner.CornerRadius = UDim.new(0, 10)
+FloatCorner.Parent = FloatButton
+
+local FloatStroke = Instance.new("UIStroke")
+FloatStroke.Color = Color3.fromRGB(88, 101, 242)
+FloatStroke.Thickness = 1.5
+FloatStroke.Parent = FloatButton
+
+FloatButton.MouseButton1Click:Connect(function()
+    if Window then Window:Minimize() end
+end)
 
 local function IsAlly(p)
     if not p or p == LocalPlayer then return false end
@@ -102,6 +144,7 @@ local function definirVisibilidadeExecutor(vis)
         end
         for _, item in pairs(Services.CoreGui:GetChildren()) do
             if item:IsA("ScreenGui")
+                and item.Name ~= "LpModsFloatingButtonGui"
                 and item.Name ~= "LpModsDiscordBtn"
                 and not item.Name:find("Fluent")
                 and not ehChat(item.Name) then
@@ -128,7 +171,6 @@ local function HasLOS(part)
     return r == nil
 end
 
--- AIMBOT original do FluxoPvP (lock direto)
 local function GetClosestPlayer()
     local target = nil
     local maxDist = Settings.FOVSize
@@ -159,7 +201,6 @@ local function GetClosestPlayer()
     return target
 end
 
--- SILENT AIM
 local function GetSilentTarget()
     local closest, shortest = nil, Settings.SilentRange
     local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
@@ -221,7 +262,6 @@ mt.__namecall = newcclosure(function(self, ...)
 end)
 setreadonly(mt, true)
 
--- AIMBOT LOOP
 Services.RunService.RenderStepped:Connect(function()
     FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     FOVCircle.Radius = Settings.FOVSize
@@ -245,7 +285,6 @@ Services.RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ESP
 local ESPDrawings = {}
 local function CreateESP(player)
     if ESPDrawings[player] then return end
@@ -285,7 +324,8 @@ Services.RunService.RenderStepped:Connect(function()
                 local cf, size = char:GetBoundingBox()
                 local sp, on = Camera:WorldToViewportPoint(cf.Position)
                 if on then
-                    local col = ally and Settings.AllyColor or Color3.fromRGB(255, 80, 80)
+                    -- COR BRANCA (CyanColor) pra inimigos, azul pra aliados
+                    local col = ally and Settings.AllyColor or CyanColor
                     local topW = cf.Position + Vector3.new(0, size.Y / 2, 0)
                     local botW = cf.Position - Vector3.new(0, size.Y / 2, 0)
                     local ts = Camera:WorldToViewportPoint(topW)
@@ -323,7 +363,6 @@ Services.RunService.RenderStepped:Connect(function()
     end
 end)
 
--- HITBOX
 local function ApplyHitbox(p)
     local char = p.Character
     if not char then return end
@@ -376,7 +415,6 @@ end)
 
 Services.Players.PlayerRemoving:Connect(function(p) OriginalHitbox[p] = nil end)
 
--- SPEED + NOCLIP + SPINBOT
 Services.RunService.Stepped:Connect(function()
     local char = LocalPlayer.Character
     if not char then return end
@@ -393,7 +431,6 @@ Services.RunService.Stepped:Connect(function()
     end
 end)
 
--- BOTÃO DISCORD (topo centrado com rainbow)
 local DiscordGui = Instance.new("ScreenGui")
 DiscordGui.Name = "LpModsDiscordBtn"
 DiscordGui.ResetOnSpawn = false
@@ -445,7 +482,6 @@ DBtn.MouseButton1Click:Connect(function()
     task.delay(2, function() DBtn.Text = "discord.gg/Pga8XBq" end)
 end)
 
--- UI - COMBATE
 Tabs.Combat:AddToggle("Aimbot", { Title = "Aimbot (Lock na cabeca)", Default = false, Callback = function(v) Settings.Aimbot = v end })
 Tabs.Combat:AddToggle("TeamCheck", { Title = "Team Check", Default = true, Callback = function(v) Settings.TeamCheck = v end })
 Tabs.Combat:AddToggle("WallCheck", { Title = "Wall Check", Default = false, Callback = function(v) Settings.WallCheck = v end })
@@ -453,7 +489,6 @@ Tabs.Combat:AddToggle("IgnoreDead", { Title = "Ignorar Mortos", Default = false,
 Tabs.Combat:AddToggle("ShowFOV", { Title = "Mostrar FOV", Default = false, Callback = function(v) Settings.ShowFOV = v end })
 Tabs.Combat:AddSlider("FOVSize", { Title = "FOV", Min = 30, Max = 500, Default = 120, Rounding = 0, Callback = function(v) Settings.FOVSize = v end })
 
--- UI - SILENT
 if isAdmin then
     Tabs.Silent:AddToggle("SilentAim", { Title = "Silent Aim", Default = false, Callback = function(v) Settings.Silent = v end })
     Tabs.Silent:AddDropdown("SilentHitPart", {
@@ -477,7 +512,6 @@ else
     })
 end
 
--- UI - VISUALS
 Tabs.Visuals:AddToggle("ESPMaster", { Title = "ESP Master", Default = false, Callback = function(v) Settings.ESP_Master = v end })
 Tabs.Visuals:AddToggle("ESPAlly", { Title = "ESP Aliado (cor azul)", Default = false, Callback = function(v) Settings.ESP_Ally = v end })
 Tabs.Visuals:AddToggle("ESPBoxes", { Title = "ESP Boxes", Default = false, Callback = function(v) Settings.ESP_Boxes = v end })
@@ -485,7 +519,6 @@ Tabs.Visuals:AddToggle("ESPLines", { Title = "ESP Lines", Default = false, Callb
 Tabs.Visuals:AddToggle("ESPNames", { Title = "ESP Nome", Default = false, Callback = function(v) Settings.ESP_Names = v end })
 Tabs.Visuals:AddToggle("ESPHealth", { Title = "ESP Vida", Default = false, Callback = function(v) Settings.ESP_Health = v end })
 
--- UI - HITBOX
 Tabs.Hitbox:AddToggle("HitboxEnabled", {
     Title = "Ativar Hitbox Expandida", Default = false,
     Callback = function(v)
@@ -497,13 +530,11 @@ Tabs.Hitbox:AddSlider("HitboxSize", { Title = "Tamanho", Min = 1, Max = 50, Defa
 Tabs.Hitbox:AddToggle("HitboxVisible", { Title = "Visual", Default = false, Callback = function(v) Settings.HitboxVisible = v end })
 Tabs.Hitbox:AddButton({ Title = "Restaurar Hitboxes", Callback = function() RestoreAll() end })
 
--- UI - MOVIMENTO
 Tabs.Movement:AddToggle("Speed", { Title = "Speed", Default = false, Callback = function(v) Settings.Speed = v end })
 Tabs.Movement:AddSlider("SpeedValue", { Title = "Velocidade", Min = 16, Max = 300, Default = 16, Rounding = 0, Callback = function(v) Settings.SpeedValue = v end })
 Tabs.Movement:AddToggle("Spinbot", { Title = "Spinbot", Default = false, Callback = function(v) Settings.Spinbot = v end })
 Tabs.Movement:AddToggle("NoClip", { Title = "NoClip", Default = false, Callback = function(v) Settings.NoClip = v end })
 
--- UI - MISC
 Tabs.Misc:AddButton({
     Title = "Esconder Executor",
     Description = ".hub / .hide no chat",
@@ -513,7 +544,6 @@ Tabs.Misc:AddButton({
     end
 })
 
--- UI - ADMIN (antiga Premium)
 if isAdmin then
     Tabs.Admin:AddButton({
         Title = "Forcar Heartbeat",
@@ -550,7 +580,6 @@ if isAdmin then
     })
 end
 
--- UI - DISCORD
 Tabs.Discord:AddButton({
     Title = "Copiar Link do Discord",
     Description = "discord.gg/Pga8XBq",
