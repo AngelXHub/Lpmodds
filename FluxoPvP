@@ -115,7 +115,7 @@ FloatButton.MouseButton1Click:Connect(function()
     if Window then Window:Minimize() end
 end)
 
--- ============ TRAVA CÂMERA NO LOCALPLAYER ============
+-- TRAVA CÂMERA NO LOCALPLAYER
 local function travarCamera()
     local lpChar = LocalPlayer.Character
     if not lpChar then return end
@@ -139,7 +139,6 @@ task.spawn(function()
         travarCamera()
     end
 end)
--- ===================================================
 
 local function IsAlly(p)
     if not p or p == LocalPlayer then return false end
@@ -294,13 +293,12 @@ Services.RunService.RenderStepped:Connect(function()
     FOVCircle.Radius = Settings.FOVSize
     FOVCircle.Visible = Settings.ShowFOV
 
-    -- Reforço da trava de câmera a cada frame
     travarCamera()
 
     if Settings.Aimbot then
         local target = GetClosestPlayer()
         if target and target.Character and target ~= LocalPlayer then
-            local head = target.Character:FindFirstChild("Head")
+            local head = target.Character:FindFirstChild(Settings.AimPart)
             local hum = target.Character:FindFirstChildOfClass("Humanoid")
             if head and hum and hum.Health > 0 then
                 Camera.CFrame = CFrame.new(Camera.CFrame.Position, head.Position)
@@ -513,180 +511,40 @@ Tabs.Combat:AddToggle("Aimbot", { Title = "Aimbot (Lock na cabeca)", Default = f
 Tabs.Combat:AddToggle("TeamCheck", { Title = "Team Check", Default = true, Callback = function(v) Settings.TeamCheck = v end })
 Tabs.Combat:AddToggle("WallCheck", { Title = "Wall Check", Default = false, Callback = function(v) Settings.WallCheck = v end })
 Tabs.Combat:AddToggle("IgnoreDead", { Title = "Ignorar Mortos", Default = false, Callback = function(v) Settings.IgnoreDead = v end })
-Tabs.Combat:AddToggle("ShowFOV", { Title = "Mostrar FOV", Default = false, Callback = function(v) Settings.ShowFOV = v end })
-Tabs.Combat:AddSlider("FOVSize", { Title = "FOV", Min = 30, Max = 500, Default = 120, Rounding = 0, Callback = function(v) Settings.FOVSize = v end })
+Tabs.Combat:AddDropdown("AimPart", { Title = "Aim Part", Values = {"Head", "HumanoidRootPart", "UpperTorso"}, Default = "Head", Callback = function(v) Settings.AimPart = v end })
+Tabs.Combat:AddSlider("FOVSize", { Title = "FOV Size", Default = 120, Min = 10, Max = 500, Rounding = 0, Callback = function(v) Settings.FOVSize = v end })
+Tabs.Combat:AddToggle("ShowFOV", { Title = "Show FOV", Default = false, Callback = function(v) Settings.ShowFOV = v end })
 
-if isAdmin then
-    Tabs.Silent:AddToggle("SilentAim", { Title = "Silent Aim", Default = false, Callback = function(v) Settings.Silent = v end })
-    Tabs.Silent:AddDropdown("SilentHitPart", {
-        Title = "Parte do corpo",
-        Values = {"Head", "UpperTorso", "HumanoidRootPart", "LeftArm", "RightArm", "LeftLeg", "RightLeg"},
-        Default = "Head",
-        Multi = false,
-        Callback = function(v) Settings.SilentHitPart = v end
-    })
-    Tabs.Silent:AddSlider("SilentChance", { Title = "Chance (%)", Min = 0, Max = 100, Default = 85, Rounding = 0, Callback = function(v) Settings.SilentChance = v end })
-    Tabs.Silent:AddSlider("SilentRange", { Title = "Alcance", Min = 100, Max = 5000, Default = 500, Rounding = 50, Callback = function(v) Settings.SilentRange = v end })
-    Tabs.Silent:AddToggle("SilentTeamCheck", { Title = "Team Check", Default = true, Callback = function(v) Settings.SilentTeamCheck = v end })
-    Tabs.Silent:AddToggle("SilentWallCheck", { Title = "Wall Check", Default = false, Callback = function(v) Settings.SilentWallCheck = v end })
-else
-    Tabs.Silent:AddButton({
-        Title = "FUNCAO EXCLUSIVA - Clique",
-        Description = "Pede acesso no Discord",
-        Callback = function()
-            Fluent:Notify({ Title = "Exclusivo", Content = "Silent Aim e exclusivo. discord.gg/Pga8XBq", Duration = 5 })
-        end
-    })
-end
+Tabs.Silent:AddToggle("SilentEnabled", { Title = "Silent Aim", Default = false, Callback = function(v) Settings.Silent = v end })
+Tabs.Silent:AddDropdown("SilentHitPart", { Title = "Hit Part", Values = {"Head", "HumanoidRootPart", "UpperTorso"}, Default = "Head", Callback = function(v) Settings.SilentHitPart = v end })
+Tabs.Silent:AddSlider("SilentChance", { Title = "Hit Chance (%)", Default = 85, Min = 0, Max = 100, Rounding = 0, Callback = function(v) Settings.SilentChance = v end })
+Tabs.Silent:AddSlider("SilentRange", { Title = "Max Range", Default = 500, Min = 50, Max = 1000, Rounding = 0, Callback = function(v) Settings.SilentRange = v end })
+Tabs.Silent:AddToggle("SilentTeamCheck", { Title = "Team Check", Default = true, Callback = function(v) Settings.SilentTeamCheck = v end })
+Tabs.Silent:AddToggle("SilentWallCheck", { Title = "Wall Check", Default = false, Callback = function(v) Settings.SilentWallCheck = v end })
 
-Tabs.Visuals:AddToggle("ESPMaster", { Title = "ESP Master", Default = false, Callback = function(v) Settings.ESP_Master = v end })
-Tabs.Visuals:AddToggle("ESPAlly", { Title = "ESP Aliado (cor azul)", Default = false, Callback = function(v) Settings.ESP_Ally = v end })
-Tabs.Visuals:AddToggle("ESPBoxes", { Title = "ESP Boxes", Default = false, Callback = function(v) Settings.ESP_Boxes = v end })
-Tabs.Visuals:AddToggle("ESPLines", { Title = "ESP Lines", Default = false, Callback = function(v) Settings.ESP_Lines = v end })
-Tabs.Visuals:AddToggle("ESPNames", { Title = "ESP Nome", Default = false, Callback = function(v) Settings.ESP_Names = v end })
-Tabs.Visuals:AddToggle("ESPHealth", { Title = "ESP Vida", Default = false, Callback = function(v) Settings.ESP_Health = v end })
+Tabs.Visuals:AddToggle("ESP_Master", { Title = "ESP Master", Default = false, Callback = function(v) Settings.ESP_Master = v end })
+Tabs.Visuals:AddToggle("ESP_Boxes", { Title = "ESP Boxes", Default = false, Callback = function(v) Settings.ESP_Boxes = v end })
+Tabs.Visuals:AddToggle("ESP_Lines", { Title = "ESP Lines", Default = false, Callback = function(v) Settings.ESP_Lines = v end })
+Tabs.Visuals:AddToggle("ESP_Names", { Title = "ESP Names", Default = false, Callback = function(v) Settings.ESP_Names = v end })
+Tabs.Visuals:AddToggle("ESP_Health", { Title = "ESP Health", Default = false, Callback = function(v) Settings.ESP_Health = v end })
+Tabs.Visuals:AddToggle("ESP_Ally", { Title = "ESP Ally", Default = false, Callback = function(v) Settings.ESP_Ally = v end })
+Tabs.Visuals:AddColorpicker("AllyColor", { Title = "Ally Color", Default = Color3.fromRGB(80, 180, 255), Callback = function(v) Settings.AllyColor = v end })
 
-Tabs.Hitbox:AddToggle("HitboxEnabled", {
-    Title = "Ativar Hitbox Expandida", Default = false,
-    Callback = function(v)
-        Settings.HitboxEnabled = v
-        if not v then RestoreAll() end
-    end
-})
-Tabs.Hitbox:AddSlider("HitboxSize", {
-    Title = "Tamanho (slider)", Min = 1, Max = 50, Default = 3, Rounding = 1,
-    Callback = function(v) Settings.HitboxSize = v end
-})
-Tabs.Hitbox:AddInput("HitboxSizeInput", {
-    Title = "Tamanho (digite)",
-    Description = "Escreve o numero. Ex: 5, 10, 20",
-    Default = "3",
-    Placeholder = "1 a 50",
-    Numeric = true,
-    Finished = true,
-    Callback = function(v)
-        local n = tonumber(v)
-        if n then
-            Settings.HitboxSize = math.clamp(n, 1, 50)
-            Fluent:Notify({ Title = "Hitbox", Content = "Tamanho: " .. Settings.HitboxSize, Duration = 2 })
-        end
-    end
-})
-Tabs.Hitbox:AddToggle("HitboxSkipAllies", {
-    Title = "Nao expandir aliados",
-    Description = "Nao aplica hitbox em quem ta no teu time",
-    Default = true,
-    Callback = function(v) Settings.HitboxSkipAllies = v end
-})
-Tabs.Hitbox:AddToggle("HitboxVisible", { Title = "Visual (semitransparente)", Default = false, Callback = function(v) Settings.HitboxVisible = v end })
-Tabs.Hitbox:AddSlider("HitboxTransparency", {
-    Title = "Transparencia", Min = 0, Max = 1, Default = 0.5, Rounding = 0.1,
-    Callback = function(v) Settings.HitboxTransparency = v end
-})
-Tabs.Hitbox:AddButton({ Title = "Restaurar Hitboxes", Callback = function() RestoreAll() end })
+Tabs.Hitbox:AddToggle("HitboxEnabled", { Title = "Enable Hitbox", Default = false, Callback = function(v) Settings.HitboxEnabled = v end })
+Tabs.Hitbox:AddSlider("HitboxSize", { Title = "Hitbox Size", Default = 3, Min = 1, Max = 10, Rounding = 1, Callback = function(v) Settings.HitboxSize = v end })
+Tabs.Hitbox:AddToggle("HitboxVisible", { Title = "Visible Hitbox", Default = false, Callback = function(v) Settings.HitboxVisible = v end })
+Tabs.Hitbox:AddSlider("HitboxTransparency", { Title = "Transparency", Default = 0.5, Min = 0, Max = 1, Rounding = 2, Callback = function(v) Settings.HitboxTransparency = v end })
+Tabs.Hitbox:AddToggle("HitboxSkipAllies", { Title = "Skip Allies", Default = true, Callback = function(v) Settings.HitboxSkipAllies = v end })
 
-Tabs.Movement:AddToggle("Speed", { Title = "Speed", Default = false, Callback = function(v) Settings.Speed = v end })
-Tabs.Movement:AddSlider("SpeedValue", { Title = "Velocidade", Min = 16, Max = 300, Default = 16, Rounding = 0, Callback = function(v) Settings.SpeedValue = v end })
+Tabs.Movement:AddToggle("Speed", { Title = "Speed Hack", Default = false, Callback = function(v) Settings.Speed = v end })
+Tabs.Movement:AddSlider("SpeedValue", { Title = "Speed Value", Default = 16, Min = 16, Max = 100, Rounding = 0, Callback = function(v) Settings.SpeedValue = v end })
+Tabs.Movement:AddToggle("NoClip", { Title = "No Clip", Default = false, Callback = function(v) Settings.NoClip = v end })
 Tabs.Movement:AddToggle("Spinbot", { Title = "Spinbot", Default = false, Callback = function(v) Settings.Spinbot = v end })
-Tabs.Movement:AddToggle("NoClip", { Title = "NoClip", Default = false, Callback = function(v) Settings.NoClip = v end })
 
-Tabs.Misc:AddButton({
-    Title = "Esconder Executor",
-    Description = ".hub / .hide no chat",
-    Callback = function()
-        executorEscondido = not executorEscondido
-        definirVisibilidadeExecutor(not executorEscondido)
-    end
-})
+Tabs.Misc:AddButton({ Title = "Restaurar Hitbox", Callback = function() RestoreAll() end })
+Tabs.Misc:AddButton({ Title = "Sair do Jogo", Callback = function() game:Shutdown() end })
 
-if isAdmin then
-    Tabs.Admin:AddButton({
-        Title = "Forcar Heartbeat",
-        Description = "Publica presenca agora",
-        Callback = function()
-            Fluent:Notify({ Title = "Admin", Content = "Heartbeat enviado.", Duration = 3 })
-        end
-    })
-    Tabs.Admin:AddButton({
-        Title = "Silent rapido (todos)",
-        Description = "Ativa Silent com todas as opcoes",
-        Callback = function()
-            Settings.Silent = true
-            Settings.SilentChance = 100
-            Settings.SilentRange = 1000
-            Settings.SilentTeamCheck = true
-            Fluent:Notify({ Title = "Admin", Content = "Silent configurado.", Duration = 3 })
-        end
-    })
-    Tabs.Admin:AddButton({
-        Title = "Fixar Camera em mim",
-        Description = "Volta a camera pro teu personagem",
-        Callback = function()
-            travarCamera()
-            Fluent:Notify({ Title = "Camera", Content = "Camera travada em voce.", Duration = 3 })
-        end
-    })
-    Tabs.Admin:AddButton({
-        Title = "Reset config",
-        Description = "Volta tudo pro padrao",
-        Callback = function()
-            Settings.Aimbot = false
-            Settings.Silent = false
-            Settings.ESP_Master = false
-            Settings.HitboxEnabled = false
-            Settings.Speed = false
-            Settings.NoClip = false
-            Settings.Spinbot = false
-            RestoreAll()
-            travarCamera()
-            Fluent:Notify({ Title = "Admin", Content = "Config resetado.", Duration = 3 })
-        end
-    })
-end
+Tabs.Discord:AddButton({ Title = "Copiar Link do Discord", Callback = function() setclipboard("https://discord.gg/Pga8XBq") end })
+Tabs.Discord:AddParagraph({ Title = "LpMods", Content = "Entre no nosso servidor para novidades e suporte." })
 
-Tabs.Discord:AddButton({
-    Title = "Copiar Link do Discord",
-    Description = "discord.gg/Pga8XBq",
-    Callback = function()
-        setclipboard("https://discord.gg/Pga8XBq")
-        Fluent:Notify({ Title = "LpMods", Content = "Link copiado!", Duration = 3 })
-    end
-})
-
-task.spawn(function()
-    task.wait(1)
-    for _, gui in pairs(Services.CoreGui:GetChildren()) do
-        if gui:IsA("ScreenGui") and gui.Name:find("Fluent") then
-            for _, v in pairs(gui:GetDescendants()) do
-                if v:IsA("Frame") and (v.Name:find("Slider") or v.Name:find("Bar")) then
-                    v.Active = true
-                end
-            end
-        end
-    end
-end)
-
-Fluent:Notify({ Title = "LpMods", Content = "Script carregado.", Duration = 4 })
-```
-
-larp: O que fiz:
-
-· travarCamera() roda a cada 0.1s — se a câmera descolar de você, ela volta pro teu Humanoid automaticamente
-· RenderStepped também força — checagem dupla a cada frame
-· CharacterAdded também chama — quando você morre e respawna, a câmera volta pra você
-· Botão "Fixar Camera em mim" na aba Admin — se travar de novo, clica e resolve na hora
-· Aimbot filtrado — target ~= LocalPlayer garante que nunca pega você mesmo
-
-Se ainda travar na visão do amigo:
-
-Roda isso no console pra eu ver o que tá rolando:
-
-```lua
-task.spawn(function()
-    while task.wait(1) do
-        local sub = workspace.CurrentCamera.CameraSubject
-        if sub and sub.Parent then
-            print("[CAM] " .. sub:GetFullName())
-        end
-    end
-end)
+Window:SelectTab(1)
