@@ -15,16 +15,16 @@ local PREMIUM_USERS = {
     ["Telanaoadm7"] = true,
     ["Zemacumbia"] = true,
 }
+
 local isPremium = PREMIUM_USERS[LocalPlayer.Name] == true or LocalPlayer.UserId == 11242088349
 
 local Settings = {
-    Silent = false, SilentHitPart = "Head", SilentChance = 85, SilentRange = 500,
-    SilentTeamCheck = true, SilentWallCheck = false,
+    Silent = false, SilentHitPart = "Head", SilentChance = 85,
+    SilentRange = 500, SilentTeamCheck = true, SilentWallCheck = false,
     ESP_Master = false, ESP_Boxes = false, ESP_Lines = false, ESP_Names = false,
     ESP_Health = false, ESP_Ally = false, AllyColor = Color3.fromRGB(80, 180, 255),
     HitboxEnabled = false, HitboxSize = 3, HitboxVisible = false, HitboxTransparency = 0.5,
-    Speed = false, SpeedValue = 16,
-    NoClip = false
+    Speed = false, SpeedValue = 16, NoClip = false
 }
 
 local OriginalHitbox = {}
@@ -73,15 +73,18 @@ local function definirVisibilidadeExecutor(vis)
         guisEscondidos = {}
         for _, item in pairs(eg:GetChildren()) do
             if item:IsA("ScreenGui") and not ehChat(item.Name) then
-                if item.Enabled then item.Enabled = false; table.insert(guisEscondidos, item) end
+                if item.Enabled then
+                    item.Enabled = false
+                    table.insert(guisEscondidos, item)
+                end
             end
         end
         for _, item in pairs(Services.CoreGui:GetChildren()) do
-            if item:IsA("ScreenGui")
-                and item.Name ~= "LpModsDiscordBtn"
-                and not item.Name:find("Fluent")
-                and not ehChat(item.Name) then
-                if item.Enabled then item.Enabled = false; table.insert(guisEscondidos, item) end
+            if item:IsA("ScreenGui") and item.Name ~= "LpModsDiscordBtn" and not item.Name:find("Fluent") and not ehChat(item.Name) then
+                if item.Enabled then
+                    item.Enabled = false
+                    table.insert(guisEscondidos, item)
+                end
             end
         end
     end
@@ -89,8 +92,13 @@ end
 
 LocalPlayer.Chatted:Connect(function(msg)
     local cmd = msg:lower():gsub("^%s*(.-)%s*$", "%1")
-    if cmd == ".hub" then definirVisibilidadeExecutor(true); executorEscondido = false
-    elseif cmd == ".hide" then definirVisibilidadeExecutor(false); executorEscondido = true end
+    if cmd == ".hub" then
+        definirVisibilidadeExecutor(true)
+        executorEscondido = false
+    elseif cmd == ".hide" then
+        definirVisibilidadeExecutor(false)
+        executorEscondido = true
+    end
 end)
 
 local function HasLOS(part)
@@ -107,11 +115,9 @@ end
 local function GetSilentTarget()
     local closest, shortest = nil, Settings.SilentRange
     local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-
     for _, p in ipairs(Services.Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character then
             if Settings.SilentTeamCheck and IsAlly(p) then continue end
-
             local char = p.Character
             local hum = char:FindFirstChildOfClass("Humanoid")
             if hum and hum.Health > 0 then
@@ -169,184 +175,7 @@ end)
 setreadonly(mt, true)
 
 local ESPDrawings = {}
-local function CreateESP(player)
-    if ESPDrawings[player] then return end
-    local d = {
-        Box = Drawing.new("Square"),
-        Line = Drawing.new("Line"),
-        Name = Drawing.new("Text"),
-        Health = Drawing.new("Text")
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
-local Services = {
-    Players = game:GetService("Players"),
-    RunService = game:GetService("RunService"),
-    UserInputService = game:GetService("UserInputService"),
-    CoreGui = game:GetService("CoreGui")
-}
-
-local LocalPlayer = Services.Players.LocalPlayer
-local Camera = workspace.CurrentCamera
-
-local PREMIUM_USERS = {
-    ["rip_pportal"] = true,
-    ["Telanaoadm7"] = true,
-    ["Zemacumbia"] = true,
-}
-local isPremium = PREMIUM_USERS[LocalPlayer.Name] == true or LocalPlayer.UserId == 11242088349
-
-local Settings = {
-    Silent = false, SilentHitPart = "Head", SilentChance = 85, SilentRange = 500,
-    SilentTeamCheck = true, SilentWallCheck = false,
-    ESP_Master = false, ESP_Boxes = false, ESP_Lines = false, ESP_Names = false,
-    ESP_Health = false, ESP_Ally = false, AllyColor = Color3.fromRGB(80, 180, 255),
-    HitboxEnabled = false, HitboxSize = 3, HitboxVisible = false, HitboxTransparency = 0.5,
-    Speed = false, SpeedValue = 16,
-    NoClip = false
-}
-
-local OriginalHitbox = {}
-local executorEscondido = false
-local guisEscondidos = {}
-
-local Window = Fluent:CreateWindow({
-    Title = "LpMods",
-    SubTitle = "by LpMods",
-    TabWidth = 140,
-    Size = UDim2.fromOffset(530, 400),
-    Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.LeftControl
-})
-
-local Tabs = {
-    Silent = Window:AddTab({ Title = "Silent", Icon = "target" }),
-    Visuals = Window:AddTab({ Title = "Visuals", Icon = "eye" }),
-    Hitbox = Window:AddTab({ Title = "Hitbox", Icon = "box" }),
-    Misc = Window:AddTab({ Title = "Misc", Icon = "settings" }),
-    Discord = Window:AddTab({ Title = "Discord", Icon = "disc" })
-}
-
-local function IsAlly(p)
-    if not p or p == LocalPlayer then return false end
-    if not LocalPlayer.Team then return false end
-    if p.Team and p.Team == LocalPlayer.Team then return true end
-    if p.TeamColor and LocalPlayer.TeamColor and p.TeamColor == LocalPlayer.TeamColor then return true end
-    return false
-end
-
-local function ehChat(n)
-    n = n:lower()
-    return n:find("chat") or n:find("bubble") or n:find("textchat") or n:find("topbar")
-end
-
-local function definirVisibilidadeExecutor(vis)
-    local eg = gethui and gethui() or Services.CoreGui
-    if not eg then return end
-    if vis then
-        for _, gui in pairs(guisEscondidos) do
-            pcall(function() gui.Enabled = true end)
-        end
-        guisEscondidos = {}
-    else
-        guisEscondidos = {}
-        for _, item in pairs(eg:GetChildren()) do
-            if item:IsA("ScreenGui") and not ehChat(item.Name) then
-                if item.Enabled then item.Enabled = false; table.insert(guisEscondidos, item) end
-            end
-        end
-        for _, item in pairs(Services.CoreGui:GetChildren()) do
-            if item:IsA("ScreenGui")
-                and item.Name ~= "LpModsDiscordBtn"
-                and not item.Name:find("Fluent")
-                and not ehChat(item.Name) then
-                if item.Enabled then item.Enabled = false; table.insert(guisEscondidos, item) end
-            end
-        end
-    end
-end
-
-LocalPlayer.Chatted:Connect(function(msg)
-    local cmd = msg:lower():gsub("^%s*(.-)%s*$", "%1")
-    if cmd == ".hub" then definirVisibilidadeExecutor(true); executorEscondido = false
-    elseif cmd == ".hide" then definirVisibilidadeExecutor(false); executorEscondido = true end
-end)
-
-local function HasLOS(part)
-    if not part then return false end
-    local char = LocalPlayer.Character
-    local origin = Camera.CFrame.Position
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = { char, part.Parent }
-    local r = workspace:Raycast(origin, part.Position - origin, params)
-    return r == nil
-end
-
-local function GetSilentTarget()
-    local closest, shortest = nil, Settings.SilentRange
-    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-
-    for _, p in ipairs(Services.Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
-            if Settings.SilentTeamCheck and IsAlly(p) then continue end
-
-            local char = p.Character
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum and hum.Health > 0 then
-                local part = char:FindFirstChild(Settings.SilentHitPart)
-                if part then
-                    if Settings.SilentWallCheck and not HasLOS(part) then continue end
-                    local sp, on = Camera:WorldToViewportPoint(part.Position)
-                    if on then
-                        local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
-                        if d < shortest then
-                            shortest = d
-                            closest = p
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return closest
-end
-
-local mt = getrawmetatable(game)
-local oldNamecall = mt.__namecall
-setreadonly(mt, false)
-mt.__namecall = newcclosure(function(self, ...)
-    local method = getnamecallmethod()
-    if isPremium and Settings.Silent and method == "FireServer" and self:IsA("RemoteEvent") then
-        local target = GetSilentTarget()
-        if target and target.Character then
-            local part = target.Character:FindFirstChild(Settings.SilentHitPart)
-            if part then
-                if math.random(1, 100) > Settings.SilentChance then
-                    return oldNamecall(self, ...)
-                end
-                local aimPos = part.Position
-                local args = {...}
-                local changed = false
-                for i, v in ipairs(args) do
-                    if typeof(v) == "Vector3" then
-                        args[i] = aimPos
-                        changed = true
-                    elseif typeof(v) == "CFrame" then
-                        args[i] = CFrame.lookAt(v.Position, aimPos)
-                        changed = true
-                    end
-                end
-                if changed then
-                    return oldNamecall(self, table.unpack(args))
-                end
-            end
-        end
-    end
-    return oldNamecall(self, ...)
-end)
-setreadonly(mt, true)
-
-local ESPDrawings = {}
 local function CreateESP(player)
     if ESPDrawings[player] then return end
     local d = {
@@ -355,16 +184,23 @@ local function CreateESP(player)
         Name = Drawing.new("Text"),
         Health = Drawing.new("Text")
     }
-    d.Box.Thickness = 1.5; d.Box.Filled = false
+    d.Box.Thickness = 1.5
+    d.Box.Filled = false
     d.Line.Thickness = 1
-    d.Name.Size = 13; d.Name.Center = true; d.Name.Outline = true
-    d.Health.Size = 11; d.Health.Center = true; d.Health.Outline = true
+    d.Name.Size = 13
+    d.Name.Center = true
+    d.Name.Outline = true
+    d.Health.Size = 11
+    d.Health.Center = true
+    d.Health.Outline = true
     ESPDrawings[player] = d
 end
 
 local function RemoveESP(player)
     if ESPDrawings[player] then
-        for _, v in pairs(ESPDrawings[player]) do v:Remove() end
+        for _, v in pairs(ESPDrawings[player]) do
+            v:Remove()
+        end
         ESPDrawings[player] = nil
     end
 end
@@ -381,7 +217,6 @@ Services.RunService.RenderStepped:Connect(function()
             local hum = char and char:FindFirstChildOfClass("Humanoid")
             local ally = IsAlly(p)
             local render = (ally and Settings.ESP_Ally) or (not ally and Settings.ESP_Master)
-
             if render and char and hum and hum.Health > 0 then
                 local cf, size = char:GetBoundingBox()
                 local sp, on = Camera:WorldToViewportPoint(cf.Position)
@@ -393,39 +228,49 @@ Services.RunService.RenderStepped:Connect(function()
                     local bs = Camera:WorldToViewportPoint(botW)
                     local hgt = math.abs(ts.Y - bs.Y)
                     local wd = hgt / 1.6
-
                     if Settings.ESP_Boxes then
                         d.Box.Size = Vector2.new(wd, hgt)
                         d.Box.Position = Vector2.new(sp.X - wd / 2, ts.Y)
                         d.Box.Color = col
                         d.Box.Visible = true
-                    else d.Box.Visible = false end
-
+                    else
+                        d.Box.Visible = false
+                    end
                     if Settings.ESP_Lines then
                         d.Line.From = Vector2.new(center.X, Camera.ViewportSize.Y)
                         d.Line.To = Vector2.new(sp.X, bs.Y)
                         d.Line.Color = col
                         d.Line.Visible = true
-                    else d.Line.Visible = false end
-
+                    else
+                        d.Line.Visible = false
+                    end
                     if Settings.ESP_Names then
                         d.Name.Text = p.Name .. (ally and " [ALLY]" or "")
                         d.Name.Position = Vector2.new(sp.X, ts.Y - 16)
                         d.Name.Color = col
                         d.Name.Visible = true
-                    else d.Name.Visible = false end
-
+                    else
+                        d.Name.Visible = false
+                    end
                     if Settings.ESP_Health then
                         d.Health.Text = math.floor(hum.Health) .. "/" .. math.floor(hum.MaxHealth)
                         d.Health.Position = Vector2.new(sp.X, bs.Y + 2)
                         d.Health.Color = Color3.fromRGB(0, 255, 0)
                         d.Health.Visible = true
-                    else d.Health.Visible = false end
+                    else
+                        d.Health.Visible = false
+                    end
                 else
-                    d.Box.Visible = false; d.Line.Visible = false; d.Name.Visible = false; d.Health.Visible = false
+                    d.Box.Visible = false
+                    d.Line.Visible = false
+                    d.Name.Visible = false
+                    d.Health.Visible = false
                 end
             else
-                d.Box.Visible = false; d.Line.Visible = false; d.Name.Visible = false; d.Health.Visible = false
+                d.Box.Visible = false
+                d.Line.Visible = false
+                d.Name.Visible = false
+                d.Health.Visible = false
             end
         end
     end
@@ -462,35 +307,53 @@ local function RestoreHitbox(p)
     if not char or not o then return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
     local head = char:FindFirstChild("Head")
-    if hrp then hrp.Size = o.hrpSize; hrp.Transparency = o.hrpTrans; hrp.CanCollide = o.hrpColl end
-    if head and o.headSize then head.Size = o.headSize; head.Transparency = o.headTrans end
+    if hrp then
+        hrp.Size = o.hrpSize
+        hrp.Transparency = o.hrpTrans
+        hrp.CanCollide = o.hrpColl
+    end
+    if head and o.headSize then
+        head.Size = o.headSize
+        head.Transparency = o.headTrans
+    end
     OriginalHitbox[p] = nil
 end
 
 local function RestoreAll()
-    for p, _ in pairs(OriginalHitbox) do RestoreHitbox(p) end
+    for p, _ in pairs(OriginalHitbox) do
+        RestoreHitbox(p)
+    end
     OriginalHitbox = {}
 end
 
 Services.RunService.Heartbeat:Connect(function()
     for _, p in ipairs(Services.Players:GetPlayers()) do
         if p ~= LocalPlayer then
-            if Settings.HitboxEnabled then ApplyHitbox(p)
-            elseif OriginalHitbox[p] then RestoreHitbox(p) end
+            if Settings.HitboxEnabled then
+                ApplyHitbox(p)
+            elseif OriginalHitbox[p] then
+                RestoreHitbox(p)
+            end
         end
     end
 end)
 
-Services.Players.PlayerRemoving:Connect(function(p) OriginalHitbox[p] = nil end)
+Services.Players.PlayerRemoving:Connect(function(p)
+    OriginalHitbox[p] = nil
+end)
 
 Services.RunService.Stepped:Connect(function()
     local char = LocalPlayer.Character
     if not char then return end
     local hum = char:FindFirstChildOfClass("Humanoid")
-    if Settings.Speed and hum then hum.WalkSpeed = Settings.SpeedValue end
+    if Settings.Speed and hum then
+        hum.WalkSpeed = Settings.SpeedValue
+    end
     if Settings.NoClip then
         for _, obj in ipairs(char:GetDescendants()) do
-            if obj:IsA("BasePart") then obj.CanCollide = false end
+            if obj:IsA("BasePart") then
+                obj.CanCollide = false
+            end
         end
     end
 end)
@@ -500,9 +363,15 @@ DiscordGui.Name = "LpModsDiscordBtn"
 DiscordGui.ResetOnSpawn = false
 DiscordGui.IgnoreGuiInset = true
 DiscordGui.DisplayOrder = 999999
-if syn and syn.protect_gui then syn.protect_gui(DiscordGui); DiscordGui.Parent = Services.CoreGui
-elseif gethui then DiscordGui.Parent = gethui()
-else DiscordGui.Parent = Services.CoreGui end
+
+if syn and syn.protect_gui then
+    syn.protect_gui(DiscordGui)
+    DiscordGui.Parent = Services.CoreGui
+elseif gethui then
+    DiscordGui.Parent = gethui()
+else
+    DiscordGui.Parent = Services.CoreGui
+end
 
 local DBtn = Instance.new("TextButton")
 DBtn.Size = UDim2.fromOffset(220, 32)
@@ -518,8 +387,15 @@ DBtn.AutoButtonColor = false
 DBtn.Active = true
 DBtn.Parent = DiscordGui
 
-local DC = Instance.new("UICorner"); DC.CornerRadius = UDim.new(0, 8); DC.Parent = DBtn
-local DS = Instance.new("UIStroke"); DS.Color = Color3.fromRGB(88, 101, 242); DS.Thickness = 1.5; DS.Parent = DBtn
+local DC = Instance.new("UICorner")
+DC.CornerRadius = UDim.new(0, 8)
+DC.Parent = DBtn
+
+local DS = Instance.new("UIStroke")
+DS.Color = Color3.fromRGB(88, 101, 242)
+DS.Thickness = 1.5
+DS.Parent = DBtn
+
 local DG = Instance.new("UIGradient")
 DG.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
@@ -543,30 +419,20 @@ end)
 DBtn.MouseButton1Click:Connect(function()
     setclipboard("https://discord.gg/Pga8XBq")
     DBtn.Text = "COPIADO!"
-    task.delay(2, function() DBtn.Text = "discord.gg/Pga8XBq" end)
+    task.delay(2, function()
+        DBtn.Text = "discord.gg/Pga8XBq"
+    end)
 end)
 
 if isPremium then
     Tabs.Silent:AddToggle("SilentAim", { Title = "Silent Aim (Premium)", Default = false, Callback = function(v) Settings.Silent = v end })
-    Tabs.Silent:AddDropdown("SilentHitPart", {
-        Title = "Parte do corpo",
-        Values = {"Head", "UpperTorso", "HumanoidRootPart", "LeftArm", "RightArm", "LeftLeg", "RightLeg"},
-        Default = "Head",
-        Multi = false,
-        Callback = function(v) Settings.SilentHitPart = v end
-    })
+    Tabs.Silent:AddDropdown("SilentHitPart", { Title = "Parte do corpo", Values = {"Head", "UpperTorso", "HumanoidRootPart", "LeftArm", "RightArm", "LeftLeg", "RightLeg"}, Default = "Head", Multi = false, Callback = function(v) Settings.SilentHitPart = v end })
     Tabs.Silent:AddSlider("SilentChance", { Title = "Chance de acerto (%)", Min = 0, Max = 100, Default = 85, Rounding = 0, Callback = function(v) Settings.SilentChance = v end })
     Tabs.Silent:AddSlider("SilentRange", { Title = "Alcance", Min = 100, Max = 5000, Default = 500, Rounding = 50, Callback = function(v) Settings.SilentRange = v end })
     Tabs.Silent:AddToggle("SilentTeamCheck", { Title = "Team Check (nao mira aliado)", Default = true, Callback = function(v) Settings.SilentTeamCheck = v end })
     Tabs.Silent:AddToggle("SilentWallCheck", { Title = "Wall Check", Default = false, Callback = function(v) Settings.SilentWallCheck = v end })
 else
-    Tabs.Silent:AddButton({
-        Title = "FUNCAO PREMIUM - Clique",
-        Description = "Pede acesso no Discord",
-        Callback = function()
-            Fluent:Notify({ Title = "Premium", Content = "Silent Aim e exclusivo. discord.gg/Pga8XBq", Duration = 5 })
-        end
-    })
+    Tabs.Silent:AddButton({ Title = "FUNCAO PREMIUM - Clique", Description = "Pede acesso no Discord", Callback = function() Fluent:Notify({ Title = "Premium", Content = "Silent Aim e exclusivo. discord.gg/Pga8XBq", Duration = 5 }) end })
 end
 
 Tabs.Visuals:AddToggle("ESPMaster", { Title = "ESP Master", Default = false, Callback = function(v) Settings.ESP_Master = v end })
@@ -576,13 +442,7 @@ Tabs.Visuals:AddToggle("ESPLines", { Title = "ESP Lines", Default = false, Callb
 Tabs.Visuals:AddToggle("ESPNames", { Title = "ESP Nome", Default = false, Callback = function(v) Settings.ESP_Names = v end })
 Tabs.Visuals:AddToggle("ESPHealth", { Title = "ESP Vida", Default = false, Callback = function(v) Settings.ESP_Health = v end })
 
-Tabs.Hitbox:AddToggle("HitboxEnabled", {
-    Title = "Ativar Hitbox Expandida", Default = false,
-    Callback = function(v)
-        Settings.HitboxEnabled = v
-        if not v then RestoreAll() end
-    end
-})
+Tabs.Hitbox:AddToggle("HitboxEnabled", { Title = "Ativar Hitbox Expandida", Default = false, Callback = function(v) Settings.HitboxEnabled = v if not v then RestoreAll() end end })
 Tabs.Hitbox:AddSlider("HitboxSize", { Title = "Tamanho", Min = 1, Max = 50, Default = 3, Rounding = 1, Callback = function(v) Settings.HitboxSize = v end })
 Tabs.Hitbox:AddToggle("HitboxVisible", { Title = "Visual", Default = false, Callback = function(v) Settings.HitboxVisible = v end })
 Tabs.Hitbox:AddButton({ Title = "Restaurar Hitboxes", Callback = function() RestoreAll() end })
@@ -590,74 +450,15 @@ Tabs.Hitbox:AddButton({ Title = "Restaurar Hitboxes", Callback = function() Rest
 Tabs.Misc:AddToggle("Speed", { Title = "Speed", Default = false, Callback = function(v) Settings.Speed = v end })
 Tabs.Misc:AddSlider("SpeedValue", { Title = "Velocidade", Min = 16, Max = 300, Default = 16, Rounding = 0, Callback = function(v) Settings.SpeedValue = v end })
 Tabs.Misc:AddToggle("NoClip", { Title = "NoClip", Default = false, Callback = function(v) Settings.NoClip = v end })
-Tabs.Misc:AddButton({
-    Title = "Esconder Executor",
-    Callback = function()
-        executorEscondido = not executorEscondido
-        definirVisibilidadeExecutor(not executorEscondido)
-    end
-})
+Tabs.Misc:AddButton({ Title = "Esconder Executor", Callback = function()
+    executorEscondido = not executorEscondido
+    definirVisibilidadeExecutor(not executorEscondido)
+end })
 
-Tabs.Discord:AddButton({
-    Title = "Copiar Link do Discord",
-    Description = "discord.gg/Pga8XBq",
-    Callback = function()
-        setclipboard("https://discord.gg/Pga8XBq")
-        Fluent:Notify({ Title = "LpMods", Content = "Link copiado!", Duration = 3 })
-    end
-})
-
-task.spawn(function()
-    task.wait(1)
-    for _, gui in pairs(Services.CoreGui:GetChildren()) do
-        if gui:IsA("ScreenGui") and gui.Name:find("Fluent") then
-            for _, v in pairs(gui:GetDescendants()) do
-                if v:IsA("Frame") and (v.Name:find("Slider") or v.Name:find("Bar")) then
-                    v.Active = true
-                end
-            end
-        end
-    end
-end)
-
-Fluent:Notify({ Title = "LpMods", Content = "Script carregado.", Duration = 4 })gle("ESPBoxes", { Title = "ESP Boxes", Default = false, Callback = function(v) Settings.ESP_Boxes = v end })
-Tabs.Visuals:AddToggle("ESPLines", { Title = "ESP Lines", Default = false, Callback = function(v) Settings.ESP_Lines = v end })
-Tabs.Visuals:AddToggle("ESPNames", { Title = "ESP Nome", Default = false, Callback = function(v) Settings.ESP_Names = v end })
-Tabs.Visuals:AddToggle("ESPHealth", { Title = "ESP Vida", Default = false, Callback = function(v) Settings.ESP_Health = v end })
-
--- UI - HITBOX
-Tabs.Hitbox:AddToggle("HitboxEnabled", {
-    Title = "Ativar Hitbox Expandida", Default = false,
-    Callback = function(v)
-        Settings.HitboxEnabled = v
-        if not v then RestoreAll() end
-    end
-})
-Tabs.Hitbox:AddSlider("HitboxSize", { Title = "Tamanho", Min = 1, Max = 50, Default = 3, Rounding = 1, Callback = function(v) Settings.HitboxSize = v end })
-Tabs.Hitbox:AddToggle("HitboxVisible", { Title = "Visual", Default = false, Callback = function(v) Settings.HitboxVisible = v end })
-Tabs.Hitbox:AddButton({ Title = "Restaurar Hitboxes", Callback = function() RestoreAll() end })
-
--- UI - MISC
-Tabs.Misc:AddToggle("Speed", { Title = "Speed", Default = false, Callback = function(v) Settings.Speed = v end })
-Tabs.Misc:AddSlider("SpeedValue", { Title = "Velocidade", Min = 16, Max = 300, Default = 16, Rounding = 0, Callback = function(v) Settings.SpeedValue = v end })
-Tabs.Misc:AddToggle("NoClip", { Title = "NoClip", Default = false, Callback = function(v) Settings.NoClip = v end })
-Tabs.Misc:AddButton({
-    Title = "Esconder Executor",
-    Callback = function()
-        executorEscondido = not executorEscondido
-        definirVisibilidadeExecutor(not executorEscondido)
-    end
-})
-
--- UI - DISCORD
-Tabs.Discord:AddButton({
-    Title = "Copiar Link do Discord",
-    Description = "discord.gg/Pga8XBq",
-    Callback = function()
-        setclipboard("https://discord.gg/Pga8XBq")
-        Fluent:Notify({ Title = "LpMods", Content = "Link copiado!", Duration = 3 })
-    end
-})
+Tabs.Discord:AddButton({ Title = "Copiar Link do Discord", Description = "discord.gg/Pga8XBq", Callback = function()
+    setclipboard("https://discord.gg/Pga8XBq")
+    Fluent:Notify({ Title = "LpMods", Content = "Link copiado!", Duration = 3 })
+end })
 
 task.spawn(function()
     task.wait(1)
