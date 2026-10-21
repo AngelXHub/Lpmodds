@@ -1,7 +1,6 @@
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
-
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 
 local function mostrarLoading()
@@ -92,10 +91,8 @@ local function mostrarLoading()
     screenGui:Destroy()
 end
 
--- Mostra o loading primeiro
 mostrarLoading()
 
--- Carrega o script principal
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
 local Services = {
@@ -127,10 +124,10 @@ local Settings = {
     SilentRange = 500, SilentTeamCheck = true, SilentWallCheck = false,
     AimSilentEnabled = false, AimSilentSize = 5,
     ESP_Master = false, ESP_Boxes = false, ESP_Lines = false, ESP_Names = false,
-    ESP_Health = false, ESP_Ally = false, AllyColor = Color3.fromRGB(80, 180, 255),
+    ESP_Health = false, ESP_Ally = false, 
+    ESPColor = Color3.fromRGB(255, 80, 80), 
+    AllyColor = Color3.fromRGB(80, 180, 255),
     HitboxEnabled = false, HitboxSize = 3, HitboxVisible = false, HitboxTransparency = 0.5,
-    HitboxAltaEnabled = false, HitboxAltaSize = 2.7,
-    HSProxyMode = "Nenhum", HSPescocoSize = 2,
     Speed = false, SpeedValue = 1,
     Spinbot = false, SpinbotSpeed = 15,
     NoClip = false,
@@ -145,13 +142,9 @@ local Settings = {
 
 local OriginalHitbox = {}
 local AimSilentOriginalSizes = {}
-local HitboxAltaOriginalSizes = {}
 local RemoveHeadOriginalSizes = {}
 local RemovedFaces = {}
 local HoloObjects = {}
-local HSPescocoOriginalSizes = {}
-local HSOriginalNames = {}
-local OnlyHSOriginalNames = {}
 local OriginalAmmoValues = {}
 local ThirdPersonConnection = nil
 
@@ -521,7 +514,7 @@ Services.RunService.RenderStepped:Connect(function()
                 local cf, size = char:GetBoundingBox()
                 local sp, on = Camera:WorldToViewportPoint(cf.Position)
                 if on then
-                    local col = ally and Settings.AllyColor or Color3.fromRGB(255, 80, 80)
+                    local col = ally and Settings.AllyColor or Settings.ESPColor
                     local topW = cf.Position + Vector3.new(0, size.Y / 2, 0)
                     local botW = cf.Position - Vector3.new(0, size.Y / 2, 0)
                     local ts = Camera:WorldToViewportPoint(topW)
@@ -586,37 +579,6 @@ task.spawn(function()
                 end
             end
             OriginalHitbox = {}
-        end
-        task.wait(0.3)
-    end
-end)
-
-task.spawn(function()
-    while true do
-        if Settings.HitboxAltaEnabled then
-            for _, p in ipairs(Services.Players:GetPlayers()) do
-                if p ~= LocalPlayer and p.Character and IsEnemy(p) then
-                    local head = p.Character:FindFirstChild("Head")
-                    if head then
-                        if not HitboxAltaOriginalSizes[head] then HitboxAltaOriginalSizes[head] = head.Size end
-                        head.Size = Vector3.new(
-                            HitboxAltaOriginalSizes[head].X * Settings.HitboxAltaSize,
-                            HitboxAltaOriginalSizes[head].Y * Settings.HitboxAltaSize,
-                            HitboxAltaOriginalSizes[head].Z * Settings.HitboxAltaSize
-                        )
-                        head.Massless = true
-                        head.Transparency = 0.7
-                        head.CanCollide = false
-                    end
-                end
-            end
-        else
-            for head, size in pairs(HitboxAltaOriginalSizes) do
-                if head and head.Parent then
-                    head.Size = size; head.Massless = false; head.Transparency = 0; head.CanCollide = true
-                end
-            end
-            HitboxAltaOriginalSizes = {}
         end
         task.wait(0.3)
     end
@@ -748,58 +710,6 @@ task.spawn(function()
     end
 end)
 
-local function applyHSProxy(mode)
-    for head, size in pairs(HitboxAltaOriginalSizes) do
-        if head and head.Parent then head.Size = size end
-    end
-    HitboxAltaOriginalSizes = {}
-    Settings.HitboxAltaEnabled = false
-    for _, player in pairs(Services.Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
-            for _, part in pairs(player.Character:GetChildren()) do
-                if part:IsA("BasePart") then
-                    local origName = HSOriginalNames[part]
-                    if origName then part.Name = origName; HSOriginalNames[part] = nil end
-                    local origName2 = OnlyHSOriginalNames[part]
-                    if origName2 then part.Name = origName2; OnlyHSOriginalNames[part] = nil end
-                    local origSize = HSPescocoOriginalSizes[part]
-                    if origSize then part.Size = origSize; HSPescocoOriginalSizes[part] = nil end
-                end
-            end
-        end
-    end
-    if mode == "HS Alto" then
-        Settings.HitboxAltaEnabled = true
-    elseif mode == "HS Pescoço" then
-        for _, player in pairs(Services.Players:GetPlayers()) do
-            if player ~= LocalPlayer and player.Character and IsEnemy(player) then
-                local head = player.Character:FindFirstChild("Head")
-                if head then
-                    if not HSPescocoOriginalSizes[head] then HSPescocoOriginalSizes[head] = head.Size end
-                    head.Size = Vector3.new(
-                        HSPescocoOriginalSizes[head].X * Settings.HSPescocoSize,
-                        HSPescocoOriginalSizes[head].Y * Settings.HSPescocoSize,
-                        HSPescocoOriginalSizes[head].Z * Settings.HSPescocoSize
-                    )
-                    head.Massless = true
-                    head.Transparency = 0.7
-                end
-            end
-        end
-    elseif mode == "Only HS" then
-        for _, player in pairs(Services.Players:GetPlayers()) do
-            if player ~= LocalPlayer and player.Character and IsEnemy(player) then
-                for _, part in pairs(player.Character:GetChildren()) do
-                    if part:IsA("BasePart") and part.Name ~= "Head" and part.Name ~= "HumanoidRootPart" then
-                        if not OnlyHSOriginalNames[part] then OnlyHSOriginalNames[part] = part.Name end
-                        part.Name = "Head"
-                    end
-                end
-            end
-        end
-    end
-end
-
 task.spawn(function()
     while true do
         if Settings.InfAmmo then
@@ -910,6 +820,8 @@ Tabs.Visuals:AddToggle("ESPBoxes", { Title = "ESP Boxes", Default = false, Callb
 Tabs.Visuals:AddToggle("ESPLines", { Title = "ESP Lines", Default = false, Callback = function(v) Settings.ESP_Lines = v end })
 Tabs.Visuals:AddToggle("ESPNames", { Title = "ESP Nome", Default = false, Callback = function(v) Settings.ESP_Names = v end })
 Tabs.Visuals:AddToggle("ESPHealth", { Title = "ESP Vida", Default = false, Callback = function(v) Settings.ESP_Health = v end })
+Tabs.Visuals:AddColorpicker("ESPColorPicker", { Title = "Cor do ESP Inimigo", Default = Color3.fromRGB(255, 80, 80), Callback = function(v) Settings.ESPColor = v end })
+Tabs.Visuals:AddColorpicker("AllyColorPicker", { Title = "Cor do ESP Aliado", Default = Color3.fromRGB(80, 180, 255), Callback = function(v) Settings.AllyColor = v end })
 Tabs.Visuals:AddToggle("Hologram", { Title = "Holograma", Default = false, Callback = function(v) Settings.Hologram = v end })
 Tabs.Visuals:AddToggle("HologramRainbow", { Title = "Holograma Rainbow", Default = false, Callback = function(v) Settings.HologramRainbow = v end })
 Tabs.Visuals:AddToggle("RemoveHead", { Title = "Retirar Cabeça", Default = false, Callback = function(v) Settings.RemoveHead = v end })
@@ -919,8 +831,6 @@ Tabs.Hitbox:AddToggle("HitboxEnabled", { Title = "Ativar Hitbox Expandida", Defa
 Tabs.Hitbox:AddSlider("HitboxSize", { Title = "Tamanho", Min = 1, Max = 50, Default = 3, Rounding = 1, Callback = function(v) Settings.HitboxSize = v end })
 Tabs.Hitbox:AddToggle("HitboxVisible", { Title = "Visual", Default = false, Callback = function(v) Settings.HitboxVisible = v end })
 Tabs.Hitbox:AddSlider("HitboxTransparency", { Title = "Transparência", Min = 0, Max = 1, Default = 0.5, Rounding = 2, Callback = function(v) Settings.HitboxTransparency = v end })
-Tabs.Hitbox:AddDropdown("HSProxyMode", { Title = "HS Proxy", Values = {"Nenhum", "HS Alto", "HS Pescoço", "Only HS"}, Default = "Nenhum", Multi = false, Callback = function(v) Settings.HSProxyMode = v; applyHSProxy(v) end })
-Tabs.Hitbox:AddSlider("HSPescocoSize", { Title = "Tamanho Pescoço", Min = 1, Max = 20, Default = 2, Rounding = 0, Callback = function(v) Settings.HSPescocoSize = v end })
 
 Tabs.Movement:AddToggle("Speed", { Title = "Speed", Default = false, Callback = function(v) Settings.Speed = v end })
 Tabs.Movement:AddSlider("SpeedValue", { Title = "Velocidade", Min = 1, Max = 20, Default = 1, Rounding = 0, Callback = function(v) Settings.SpeedValue = v end })
